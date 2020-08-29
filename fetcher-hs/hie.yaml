@@ -1,0 +1,8 @@
+cradle:
+  stack:
+    - component: "data-fetcher-hs:exe:data-fetcher-hs-exe"
+      path: "./app" 
+    - component: "data-fetcher-hs:lib"
+      path: "./src"
+    - component: "data-fetcher-hs:test"
+      path: "./test"
