@@ -1,0 +1,19 @@
+{
+  "price": {
+    "finnhub_price": {
+      "params": {
+        "ticker": "string"
+      },
+      "command": "/home/jared/workspace/hobby/stock-analysis/indicator-fetch-hs/.stack-work/install/x86_64-linux-tinfo6/2db2873d4967e16258cf6f3db3df2f229cd2d37ade2547b9e6bdb45d98e93d5c/8.8.3/bin/data-fetcher-hs-exe -i sentiment $ticker"
+    }
+  },
+  "sentiment": {
+    "finnhub_news_sentiment": {
+      "aliases": ["news_sentiment"],
+      "params": {
+        "ticker": "string"
+      },
+      "command": "/home/jared/workspace/hobby/stock-analysis/indicator-fetch-hs/.stack-work/install/x86_64-linux-tinfo6/2db2873d4967e16258cf6f3db3df2f229cd2d37ade2547b9e6bdb45d98e93d5c/8.8.3/bin/data-fetcher-hs-exe -i sentiment $ticker"
+    }
+  }
+}

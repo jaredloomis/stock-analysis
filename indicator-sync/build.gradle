@@ -1,0 +1,47 @@
+buildscript {
+  repositories {
+    google()
+    mavenCentral()
+    jcenter()
+  }
+  dependencies {
+    classpath 'com.squareup.sqldelight:gradle-plugin:1.4.2'
+  }
+}
+
+plugins {
+  id "org.jetbrains.kotlin.jvm" version "1.4.0"
+  id "application"
+}
+apply plugin: 'com.squareup.sqldelight'
+
+repositories {
+  mavenCentral()
+  jcenter()
+  google()
+}
+
+dependencies {
+  implementation "com.squareup.sqldelight:jdbc-driver:1.4.2"
+  implementation "com.zaxxer:HikariCP:3.4.5"
+  implementation "com.github.ajalt.clikt:clikt:3.0.0-rc"
+  implementation "org.postgresql:postgresql:42.2.16"
+  implementation "org.kodein.di:kodein-di-jvm:7.0.0"
+}
+
+mainClassName = "com.jaredloomis.moneygetter.datasync.MainKt"
+
+// Target JVM 1.8
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).all {
+  kotlinOptions {
+    jvmTarget = "1.8"
+  }
+}
+
+// Generate SQLDelight class files
+sqldelight {
+  StockDatabase {
+    packageName = "com.jaredloomis.moneygetter.datasync"
+    dialect = "postgresql"
+  }
+}

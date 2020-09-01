@@ -14,7 +14,7 @@ import Data.Aeson
 data Quote a = Quote {
   quoteTicker :: Text,
   quoteTime :: UTCTime,
-  quoteValue :: Float,
+  quoteValue :: Double,
   quoteApiId :: Text,
   quoteRaw :: a
 } deriving (Eq, Show, Generic, ToJSON, FromJSON)

@@ -29,6 +29,7 @@ library
       FinnhubAPI
       Lib
       Quote
+      Sentiment
       SimFinAPI
       Statement
   other-modules:
@@ -61,6 +62,7 @@ executable data-fetcher-hs-exe
   build-depends:
       aeson
     , base >=4.7 && <5
+    , containers
     , data-fetcher-hs
     , optparse-applicative
     , text

@@ -22,6 +22,7 @@ import Data.Vector ((!?))
 import qualified Data.ByteString.Lazy as B
 import qualified Data.Text    as T
 import qualified Data.Text.IO as T
+import qualified Data.Text.Read as T
 import qualified Data.Aeson as A
 import qualified Data.Aeson.Types as A
 import qualified Data.HashMap.Strict as HM
@@ -130,14 +131,18 @@ fiscalPeriodToDayRange fiscalPeriod year =
 findNetProfit :: SimFinStatement -> Maybe Float
 findNetProfit stmt =
   findStmtValueByLowerKey "Net Income" stmt >>= \case
-    A.String txt -> Just txt
+    A.String txt -> Just . fst . fromRight $ (T.signed T.rational) txt
     _            -> Nothing
+ where
+  fromRight (Right a) = a
 
 findShareholdersEquity :: SimFinStatement -> Maybe Float
 findShareholdersEquity stmt =
   findStmtValueByLowerKey "Shareholder's Equity" stmt >>= \case
-    A.String txt -> Just txt
+    A.String txt -> Just . fst . fromRight $ (T.signed T.rational) txt
     _            -> Nothing
+ where
+  fromRight (Right a) = a
 
 findFiscalPeriod :: SimFinStatement -> Maybe Text
 findFiscalPeriod stmt =
