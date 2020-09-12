@@ -1,0 +1,85 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.34.2.
+--
+-- see: https://github.com/sol/hpack
+
+name:           data-fetcher-hs
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/jaredloomis/data-fetcher-hs#readme>
+homepage:       https://github.com/githubuser/data-fetcher-hs#readme
+bug-reports:    https://github.com/githubuser/data-fetcher-hs/issues
+author:         Jared Loomis
+maintainer:     jaredloomis@protonmail.com
+copyright:      2020 Jared Loomis
+license:        GPL
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    ChangeLog.md
+
+source-repository head
+  type: git
+  location: https://github.com/githubuser/data-fetcher-hs
+
+library
+  exposed-modules:
+      Error
+      FinnhubAPI
+      Lib
+      Quote
+      Sentiment
+      SimFinAPI
+      Statement
+  other-modules:
+      Paths_data_fetcher_hs
+  hs-source-dirs:
+      src
+  build-depends:
+      aeson >=1.4.1.0 && <1.6
+    , base >=4.7 && <5
+    , bytestring
+    , either >=5
+    , http-client
+    , http-client-tls
+    , servant >=0.16
+    , servant-client >=0.16
+    , text >=1.2.3.0 && <1.3
+    , time
+    , trifecta
+    , unordered-containers
+    , vector
+  default-language: Haskell2010
+
+executable data-fetcher-hs-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_data_fetcher_hs
+  hs-source-dirs:
+      app
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , data-fetcher-hs
+    , optparse-applicative
+    , split
+    , text
+    , vector
+  default-language: Haskell2010
+
+test-suite data-fetcher-hs-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_data_fetcher_hs
+  hs-source-dirs:
+      test
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , data-fetcher-hs
+  default-language: Haskell2010

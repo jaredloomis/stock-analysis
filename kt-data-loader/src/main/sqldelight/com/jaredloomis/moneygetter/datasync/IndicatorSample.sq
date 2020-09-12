@@ -1,0 +1,18 @@
+CREATE TABLE IndicatorSample (
+  sample_id TEXT PRIMARY KEY,
+  stock_id TEXT NOT NULL,
+  indicator_id TEXT NOT NULL,
+  fetch_source_id TEXT NOT NULL,
+  start_time TIMESTAMP NOT NULL,
+  end_time TIMESTAMP NOT NULL,
+  indicator_value DOUBLE PRECISION NOT NULL
+);
+
+insert:
+INSERT INTO IndicatorSample(sample_id, stock_id, indicator_id, fetch_source_id, start_time, end_time, indicator_value)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+list:
+SELECT * FROM IndicatorSample;
+
+-- TODO: stock_id serial REFERENCES Stocks(stock_id),

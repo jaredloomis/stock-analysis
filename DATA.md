@@ -8,7 +8,10 @@ The purpose of this project is to explore connections in data related to financi
 
 **Live ticker data**
 
-- Scrape from any source - google, yahoo, tradingview
+- [Financial Modeling Prep](https://financialmodelingprep.com/developer/docs/)
+  - Free for 250 requests / month
+  - $14 / month for unlimited requests
+- Scrape from free source - google, yahoo, tradingview
 
 **Historical Data**
 

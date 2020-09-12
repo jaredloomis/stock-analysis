@@ -1,0 +1,12 @@
+CREATE TABLE Stock (
+  stock_id TEXT PRIMARY KEY,
+  ticker TEXT UNIQUE NOT NULL,
+  company_name TEXT NOT NULL
+);
+
+insert:
+INSERT INTO Stock(stock_id, ticker, company_name)
+VALUES (?, ?, ?);
+
+list:
+SELECT * FROM Stock;

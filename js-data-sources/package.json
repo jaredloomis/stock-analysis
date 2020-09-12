@@ -1,0 +1,16 @@
+{
+  "name": "js-data-sources",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "fetch": "node ./src/index.js fetch-quote AMD F"
+  },
+  "author": "Jared Loomis <jaredloomis@protonmail.com>",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "crawler": "^1.2.2",
+    "yargs": "^16.0.3"
+  }
+}

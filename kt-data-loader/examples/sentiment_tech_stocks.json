@@ -1,0 +1,10 @@
+{
+  "indicators": [
+    {
+      "indicator": "sentiment",
+      "arguments": {
+        "tickers": ["AAPL", "MSFT", "TSLA", "AMD", "INTC", "FB"]
+      }
+    }
+  ]
+}

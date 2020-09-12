@@ -1,0 +1,8 @@
+CREATE TABLE StockRelation (
+  stock_a TEXT NOT NULL,
+  stock_b TEXT NOT NULL,
+  relation_description TEXT NOT NULL
+);
+
+-- TODO: REFERENCES Stock(stock_id)
+-- TODO: REFERENCES Stock(stock_id)
