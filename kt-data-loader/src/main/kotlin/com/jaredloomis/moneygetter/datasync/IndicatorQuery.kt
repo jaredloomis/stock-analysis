@@ -12,7 +12,7 @@ import java.nio.file.Paths
  */
 data class IndicatorQuery(
   @JsonProperty("indicator") val indicatorID: String,
-  @JsonProperty("arguments") val arguments: Map<String, Any>
+  @JsonProperty("arguments") val arguments: MutableMap<String, Any>
 ) {
   private val mapper by di.instance<ObjectMapper>()
 
@@ -21,8 +21,21 @@ data class IndicatorQuery(
       .filter    { it.value is String }
       .mapValues { it.value as String }
 
-  val tickers: List<String>
-    get() = _getTickers()
+  var tickers: List<String>
+    get()     = arguments.getOrDefault("tickers", emptyList<String>()) as List<String>
+    set(strs) = arguments.set("tickers", strs)
+
+  init {
+    // Expand '*' to mean 'all stock tickers'
+    val all = tickers.any { it == "*" }
+    tickers = if(all) {
+      tickers
+        .filter { it == "*" }
+        .plus(listAllTickers().map { it.first })
+    } else {
+      tickers
+    }
+  }
 
   /**
    * Splits query into batches based on number of tickers.
@@ -30,7 +43,9 @@ data class IndicatorQuery(
   fun batches(batchSize: Int): List<IndicatorQuery> {
     return if(tickers.isNotEmpty() && batchSize != 0) {
       tickers.chunked(batchSize).map { chunk ->
-        IndicatorQuery(indicatorID, arguments.plus(Pair("tickers", chunk)))
+        val args = HashMap(arguments)
+        args["tickers"] = chunk
+        IndicatorQuery(indicatorID, args)
       }
     } else {
       listOf(this)
@@ -39,12 +54,6 @@ data class IndicatorQuery(
 
   operator fun get(s: String): Any? {
     return arguments[s]
-  }
-
-  private fun _getTickers(): List<String> {
-    val tickers = arguments.getOrDefault("tickers", emptyList<String>()) as List<String>
-    val all = tickers.any { it == "*" }
-    return tickers.plus(listAllTickers().map { it.first })
   }
 
   private fun listAllTickers(): List<Pair<String, String>> {

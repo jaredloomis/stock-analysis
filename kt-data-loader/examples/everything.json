@@ -5,6 +5,12 @@
       "arguments": {
         "tickers": ["*"]
       }
+    },
+    {
+      "indicator": "sentiment",
+      "arguments": {
+        "tickers": ["*"]
+      }
     }
   ]
 }

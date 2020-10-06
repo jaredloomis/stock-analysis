@@ -22,13 +22,20 @@ function buildQuote(ticker, time, value, apiID, raw) {
   };
 }
 
+function parseNumber(num) {
+  if(typeof num === 'string') {
+    return parseFloat(num.replace(',', ''))
+  }
+  return num;
+}
+
 const flows = [
   {
     name: "Yahoo Stock Quotes",
     url: /https:\/\/finance.yahoo.com\/quote\/(.+)\/?/,
     handler: async (error, res) => {
       const { $, options } = res;
-      const value = $('#quote-header-info .Fz\\(36px\\)').text();
+      const value = parseNumber($('#quote-header-info .Fz\\(36px\\)').text());
       const raw = {
         url: res.request.uri.href,
         //body: $('body').text()

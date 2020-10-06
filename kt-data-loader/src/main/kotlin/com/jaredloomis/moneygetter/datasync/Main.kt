@@ -2,28 +2,35 @@ package com.jaredloomis.moneygetter.datasync
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.file
 import com.github.ajalt.clikt.parameters.types.int
-import org.kodein.di.*
+import org.kodein.di.instance
+import org.slf4j.LoggerFactory
 import java.io.File
+import java.lang.StringBuilder
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.*
-import kotlin.streams.asSequence
+import java.util.concurrent.*
 
 fun main(args: Array<String>) {
   CLIRunner().main(args)
 }
 
 class CLIRunner : CliktCommand() {
+  private val log = LoggerFactory.getLogger(javaClass)
+
   private val configFile: File by option(help = "Path to config file")
     .file(mustBeReadable = true)
     .required()
-
-  private val batchSize: Int? by option(help = "# of data source queries to execute at a time")
+  private val batchSize: Int? by option(help = "# of tickers per data source query")
     .int()
+  private val concurrentQueries: Int by option(help = "# of data source queries to execute at the same time")
+    .int()
+    .default(3)
 
   private val mapper by di.instance<ObjectMapper>()
   private val props by di.instance<Properties>()
@@ -35,55 +42,86 @@ class CLIRunner : CliktCommand() {
     .plus(Pair(SentimentSample.INDICATOR_ID, SentimentSample::class.java))
 
   override fun run() {
-    val config = loadConfig()
+    val executor = createExecutorService()
 
-    println("Running With Config $config")
+    // Kill child processes if this process is killed (?)
+    Runtime.getRuntime().addShutdownHook(Thread {
+      executor.shutdownNow()
+      executor.awaitTermination(10, TimeUnit.SECONDS)
+    })
 
-    config.queries.forEach { indicatorSpec ->
-      // Run indicator fetcher
-      val fetchProcesses = indicatorSpec.batches(batchSize ?: 0).map { getIndicatorFetcher(it)!! }
-      val outputStream = fetchProcesses.map { runProcessSync(it) }.asSequence().flatten()
+    val config = loadQueryConfig()
+    log.debug("Running With Config $configFile:\n$config")
 
-      // Parse each output line
-      outputStream.forEach { output ->
-        println("Output: $output")
+    // Execute queries
+    config.queries.forEach { indicatorQuery ->
+      // Create ProcessBuilders for all Data Source queries
+      val dataSourceProcessBuilders = indicatorQuery
+        .batches(batchSize ?: 0)
+        .map { getDataSource(it)!! }
 
-        val json = mapper.readTree(output)
-        val errors = LinkedList<String>()
-        val rawSamples = json.elements().asSequence().mapNotNull {
-          if (it.isTextual) {
-            errors.push(it.asText())
-            null
-          } else {
-            mapper.treeToValue(it, INDICATOR_MODEL_CLASSES[indicatorSpec.indicatorID])
+      // And add them to the executor queue
+      dataSourceProcessBuilders.forEach { processBuilder ->
+        executor.execute {
+          log.debug("Starting Process ${processBuilder.command()}")
+          val proc = processBuilder.start()
+          proc.inputStream.bufferedReader().lines().forEach { output ->
+            log.debug("Output: $output")
+            processOutputLine(indicatorQuery.indicatorID, output)
           }
-        }.toList()
-        // Create an indicator sample
-        val samples = rawSamples.map { it.asSample() }
-
-        println("Samples: $samples")
-
-        // Insert sample into the DB
-        samples.forEach { sample ->
-          db.indicatorSampleQueries.insert(
-            sample.sample_id,
-            sample.stock_id,
-            sample.indicator_id,
-            sample.fetch_source_id,
-            sample.start_time,
-            sample.end_time,
-            sample.indicator_value
-          )
+          proc.onExit().join()
         }
       }
     }
+
+    executor.shutdown()
+    executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS)
+    log.info("Successfully completed.")
   }
 
-  private fun loadConfig(): IndicatorQueryConfig {
+  private fun processOutputLine(indicatorID: String, line: String): List<IndicatorSample> {
+    // Read to JSON
+    val json = mapper.readTree(line)
+    val errors = LinkedList<String>()
+    val rawSamples = json.elements().asSequence().mapNotNull {
+      if (it.isTextual) {
+        errors.push(it.asText())
+        null
+      } else {
+        mapper.treeToValue(it, INDICATOR_MODEL_CLASSES[indicatorID])
+      }
+    }.toList()
+
+    // Create an indicator sample
+    val samples = rawSamples.map { it.asSample() }
+
+    log.debug("Samples: $samples")
+
+    // Insert sample into the DB
+    samples.forEach { sample ->
+      db.indicatorSampleQueries.insert(
+        sample.sample_id,
+        sample.stock_id,
+        sample.indicator_id,
+        sample.fetch_source_id,
+        sample.start_time,
+        sample.end_time,
+        sample.indicator_value
+      )
+    }
+
+    return samples
+  }
+
+  private fun createExecutorService(): ExecutorService {
+    return ThreadPoolExecutor(0, concurrentQueries, 30L, TimeUnit.MINUTES, LinkedBlockingQueue<Runnable>())
+  }
+
+  private fun loadQueryConfig(): IndicatorQueryConfig {
     return mapper.readValue(configFile, IndicatorQueryConfig::class.java)
   }
 
-  private fun getIndicatorFetcher(query: IndicatorQuery): ProcessBuilder? {
+  private fun getDataSource(query: IndicatorQuery): ProcessBuilder? {
     val indicator = query.indicatorID
 
     // Get command template from config file
@@ -96,20 +134,14 @@ class CLIRunner : CliktCommand() {
     val cmdTemplate = fetcher["command"].asText()
     // Instantiate $variables from fetchSpec arguments
     val cmd = query.arguments.entries.fold(cmdTemplate) { acc, arg ->
-      // XXX: special case :/
       if(arg.key == "tickers") {
-        val tickers = if((arg.value as List<*>).any { it =="*" }) {
-            listAllTickers().map { it.first }
-          } else {
-            arg.value as List<String>
-          }
-        acc.replace("\$${arg.key}", showListArg(tickers))
+        acc.replace("\$${arg.key}", showTickers(arg.value as List<String>))
       } else {
         acc.replace("\$${arg.key}", arg.value.toString())
       }
     }
 
-    println("Data Source query command: $cmd")
+    log.debug("Data Source query command: $cmd")
 
     return ProcessBuilder(cmd.split(" "))
       .directory(Paths.get("..").toFile())
@@ -117,26 +149,13 @@ class CLIRunner : CliktCommand() {
       .redirectError(ProcessBuilder.Redirect.to(Paths.get("error.log").toFile()))
   }
 
-  private fun showListArg(xs: List<Any>): String {
-    return xs.fold(StringBuilder()) { acc, x ->
-      if(acc.isEmpty()) {
-        acc.append(x.toString())
+  private fun showTickers(tickers: List<String>): String {
+    return tickers.foldIndexed(StringBuilder()) { i, acc, ticker ->
+      if(i != tickers.size-1) {
+        acc.append(ticker).append(",")
       } else {
-        acc.append(",").append(x.toString())
+        acc.append(ticker)
       }
     }.toString()
   }
-
-  private fun listAllTickers(): List<Pair<String, String>> {
-    val jsonText = Files.readString(Paths.get("../data/stock_list_nyse.json"))
-    val jsonNode = mapper.readTree(jsonText)
-    return jsonNode.asIterable()
-      .map { Pair(it["ACT Symbol"].asText(), it["Company Name"].asText()) }
-      .toList()
-  }
-}
-
-fun runProcessSync(processBuilder: ProcessBuilder): Sequence<String> {
-  val proc = processBuilder.start()
-  return proc.inputStream.bufferedReader().lines().asSequence()
 }
