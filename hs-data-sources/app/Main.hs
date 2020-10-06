@@ -28,30 +28,32 @@ import Error (StockError(..))
 main :: IO ()
 main = do
   -- Parse request
-  req <- execParser parserInfo
+  req@(CLIRequest indicator batchSize tickers) <- execParser parserInfo
 
-  -- Execute request
-  results <- execReq req
-  
   let showResult x =
         case x of
           Left err  -> A.String . T.pack . show $ err
           Right res -> A.toJSON res
-  let outputJSON = V.fromList . map showResult $ results
+  let printResults = B.putStrLn . encode . V.fromList . map showResult
 
-  -- Print results
-  B.putStrLn . encode $ outputJSON 
+  -- Execute request
+  let tickerChunks = fmap (chunksOf batchSize) tickers
+  case tickerChunks of
+    Just chunks ->
+      (flip mapM_) chunks $ \chunk -> do
+        printResults =<< execIndicator indicator (Just chunk)
+    Nothing ->
+      printResults =<< execIndicator indicator Nothing
 
-execReq :: CLIRequest -> IO [Either StockError A.Value]
-execReq (CLIRequest "price" batchSize (Just tickers)) = do
-  let chunks = chunksOf batchSize tickers
-  results <- fmap concat . sequence . map (Finnhub.quoteMany finnhubToken) $ chunks
+execIndicator :: T.Text -> Maybe [T.Text] -> IO [Either StockError A.Value]
+execIndicator "price" (Just tickers) = do
+  results <- Finnhub.quoteMany finnhubToken $ tickers
   return $ map (bimap StockApiError A.toJSON) results
-execReq (CLIRequest "sentiment" batchSize (Just tickers)) = do
-  let chunks = chunksOf batchSize tickers
-  results <- fmap concat . sequence . map (Finnhub.newsSentimentMany finnhubToken) $ chunks
+execIndicator "sentiment" (Just tickers) = do
+  results <- Finnhub.newsSentimentMany finnhubToken $ tickers
   return $ map (bimap StockApiError A.toJSON) results
-execReq req = return [Left . StockError . T.pack $ "unsupported operation. args: " ++ show req]
+execIndicator indicator tickers = return [Left . StockError . T.pack $
+  "unsupported operation. Indicator: " ++ show indicator ++ " args: " ++ show tickers]
 
 --
 -- Config
@@ -88,7 +90,7 @@ cliRequest = CLIRequest
       <> metavar "BATCH_SIZE"
       <> showDefault
       <> value 30
-      <> help "Indicator to run" )
+      <> help "Number of samples to output at a time" )
   <*> fmap Just stockTickers
 
 stockTickers :: Parser [Text]

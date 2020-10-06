@@ -67,7 +67,7 @@ var c = new Crawler({
   }
 });
 
-tickers.flatMap(ticker => ticker.split(',')).forEach(ticker =>
+tickers.forEach(ticker =>
   c.queue({
     url: `https://finance.yahoo.com/quote/${ticker}`,
     ticker: ticker

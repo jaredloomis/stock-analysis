@@ -1,5 +1,5 @@
 {
-  "indicators": [
+  "queries": [
     {
       "indicator": "price",
       "arguments": {

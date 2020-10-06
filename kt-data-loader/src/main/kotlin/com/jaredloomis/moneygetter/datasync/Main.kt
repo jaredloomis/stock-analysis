@@ -5,11 +5,13 @@ import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.file
+import com.github.ajalt.clikt.parameters.types.int
 import org.kodein.di.*
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.*
+import kotlin.streams.asSequence
 
 fun main(args: Array<String>) {
   CLIRunner().main(args)
@@ -19,6 +21,9 @@ class CLIRunner : CliktCommand() {
   private val configFile: File by option(help = "Path to config file")
     .file(mustBeReadable = true)
     .required()
+
+  private val batchSize: Int? by option(help = "# of data source queries to execute at a time")
+    .int()
 
   private val mapper by di.instance<ObjectMapper>()
   private val props by di.instance<Properties>()
@@ -34,90 +39,52 @@ class CLIRunner : CliktCommand() {
 
     println("Running With Config $config")
 
-    config.specs.forEach { indicatorSpec ->
+    config.queries.forEach { indicatorSpec ->
       // Run indicator fetcher
-      val fetchProcess = getIndicatorFetcher(indicatorSpec)!!
-      val output = runProcessSync(fetchProcess)
-      // Parse
-      val json = mapper.readTree(output)
-      val errors = LinkedList<String>()
-      val rawSamples = json.elements().asSequence().mapNotNull {
-        if(it.isTextual) {
-          errors.push(it.asText())
-          null
-        } else {
-          mapper.treeToValue(it, INDICATOR_MODEL_CLASSES[indicatorSpec.indicatorID])
-        }
-      }.toList()
-      // Create an indicator sample
-      val samples = rawSamples.map { it.asSample() }
+      val fetchProcesses = indicatorSpec.batches(batchSize ?: 0).map { getIndicatorFetcher(it)!! }
+      val outputStream = fetchProcesses.map { runProcessSync(it) }.asSequence().flatten()
 
-      println("Samples: $samples")
+      // Parse each output line
+      outputStream.forEach { output ->
+        println("Output: $output")
 
-      // Insert sample into the DB
-      samples.forEach { sample ->
-        db.indicatorSampleQueries.insert(
-          sample.sample_id,
-          sample.stock_id,
-          sample.indicator_id,
-          sample.fetch_source_id,
-          sample.start_time,
-          sample.end_time,
-          sample.indicator_value
-        )
-      }
-    }
-/*
-    listAllTickers()
-      .filter { it.first.getOrNull(0) != null && it.first[0] > 'M' }
-      .forEach { company ->
-      try {
-        val ticker = company.first
-        val companyName = company.second
-        println("Indicator: $ticker")
-
-        // Run indicator fetcher
-        val output = runProcessSync(getIndicatorFetcher(indicator, ticker)!!)
-        // Parse
-        val quote = mapper.readValue(output, PriceIndicatorSample::class.java)
+        val json = mapper.readTree(output)
+        val errors = LinkedList<String>()
+        val rawSamples = json.elements().asSequence().mapNotNull {
+          if (it.isTextual) {
+            errors.push(it.asText())
+            null
+          } else {
+            mapper.treeToValue(it, INDICATOR_MODEL_CLASSES[indicatorSpec.indicatorID])
+          }
+        }.toList()
         // Create an indicator sample
-        val sample = quote.asSample()
+        val samples = rawSamples.map { it.asSample() }
 
-        println("Parsed result: $quote")
-        println("Sample: $sample")
-
-        // Insert stock into the DB
-        db.stockQueries.insert(
-          sample.stock_id,
-          ticker,
-          companyName
-        )
+        println("Samples: $samples")
 
         // Insert sample into the DB
-        db.indicatorSampleQueries.insert(
-          sample.sample_id,
-          sample.stock_id,
-          sample.indicator_id,
-          sample.fetch_source_id,
-          sample.start_time,
-          sample.end_time,
-          sample.indicator_value
-        )
-
-        Thread.sleep(1000)
-      } catch (ex: Exception) {
-        System.err.println("Error fetching $company")
-        ex.printStackTrace()
+        samples.forEach { sample ->
+          db.indicatorSampleQueries.insert(
+            sample.sample_id,
+            sample.stock_id,
+            sample.indicator_id,
+            sample.fetch_source_id,
+            sample.start_time,
+            sample.end_time,
+            sample.indicator_value
+          )
+        }
       }
-    }*/
+    }
   }
 
-  private fun loadConfig(): IndicatorFetchSpecConfig {
-    return mapper.readValue(configFile, IndicatorFetchSpecConfig::class.java)
+  private fun loadConfig(): IndicatorQueryConfig {
+    return mapper.readValue(configFile, IndicatorQueryConfig::class.java)
   }
 
-  private fun getIndicatorFetcher(fetchSpec: IndicatorFetchSpec): ProcessBuilder? {
-    val indicator = fetchSpec.indicatorID
+  private fun getIndicatorFetcher(query: IndicatorQuery): ProcessBuilder? {
+    val indicator = query.indicatorID
 
     // Get command template from config file
     val indicatorsMap = Paths.get("..").resolve(props["indicators.map.path"] as String)
@@ -128,7 +95,7 @@ class CLIRunner : CliktCommand() {
     val fetcher = fetchers.next()
     val cmdTemplate = fetcher["command"].asText()
     // Instantiate $variables from fetchSpec arguments
-    val cmd = fetchSpec.arguments.entries.fold(cmdTemplate) { acc, arg ->
+    val cmd = query.arguments.entries.fold(cmdTemplate) { acc, arg ->
       // XXX: special case :/
       if(arg.key == "tickers") {
         val tickers = if((arg.value as List<*>).any { it =="*" }) {
@@ -142,7 +109,7 @@ class CLIRunner : CliktCommand() {
       }
     }
 
-    println("Fetcher command: $cmd")
+    println("Data Source query command: $cmd")
 
     return ProcessBuilder(cmd.split(" "))
       .directory(Paths.get("..").toFile())
@@ -169,8 +136,7 @@ class CLIRunner : CliktCommand() {
   }
 }
 
-fun runProcessSync(processBuilder: ProcessBuilder): String {
+fun runProcessSync(processBuilder: ProcessBuilder): Sequence<String> {
   val proc = processBuilder.start()
-  proc.onExit().join()
-  return proc.inputStream.bufferedReader().readText()
+  return proc.inputStream.bufferedReader().lines().asSequence()
 }
