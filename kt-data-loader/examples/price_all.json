@@ -1,0 +1,10 @@
+{
+  "queries": [
+    {
+      "indicator": "price",
+      "arguments": {
+        "tickers": ["*"]
+      }
+    }
+  ]
+}

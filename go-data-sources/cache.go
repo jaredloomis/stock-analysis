@@ -1,1 +1,0 @@
-// Caching is done for every request made, to save bandwidth / resource limits

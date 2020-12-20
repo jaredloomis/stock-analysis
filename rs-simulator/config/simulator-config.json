@@ -1,0 +1,3 @@
+{
+  "data-loader": "(cd kt-data-loader && gradle run --args='$$')"
+}

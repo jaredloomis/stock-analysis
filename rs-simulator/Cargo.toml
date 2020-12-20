@@ -1,0 +1,10 @@
+[package]
+name = "stock-analysis-simulator"
+version = "0.1.0"
+authors = ["Jared Loomis <jaredloomis@protonmail.com>"]
+
+[dependencies]
+pest = "2.1.0"
+serde = "1.0"
+serde_json = "1.0"
+clap = "2.33.3"

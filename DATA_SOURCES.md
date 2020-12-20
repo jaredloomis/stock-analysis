@@ -18,6 +18,10 @@ The purpose of this project is to explore connections in data related to financi
 - Likely need a paid data source
 - finnhub
 
+#### Options Price Data
+
+TODO
+
 #### Fundamentals Data
 
 **SEC Filings info**

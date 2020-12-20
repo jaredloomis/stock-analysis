@@ -30,6 +30,7 @@ library:
   - unordered-containers
   - vector
   - trifecta
+  - cassava
 
 executables:
   data-fetcher-hs-exe:
@@ -48,6 +49,7 @@ executables:
     - vector
     - bytestring
     - split
+    - time
 
 tests:
   data-fetcher-hs-test:

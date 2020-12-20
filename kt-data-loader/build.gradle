@@ -35,6 +35,16 @@ dependencies {
 
 mainClassName = "com.jaredloomis.moneygetter.datasync.MainKt"
 
+jar {
+  manifest {
+    attributes "Main-Class": "$mainClassName"
+  }
+
+  from {
+    configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+  }
+}
+
 // Target JVM 1.8
 tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).all {
   kotlinOptions {

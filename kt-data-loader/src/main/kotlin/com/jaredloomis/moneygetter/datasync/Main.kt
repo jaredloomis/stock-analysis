@@ -106,7 +106,9 @@ class CLIRunner : CliktCommand() {
         sample.fetch_source_id,
         sample.start_time,
         sample.end_time,
-        sample.indicator_value
+        sample.fetch_time,
+        sample.indicator_value,
+        sample.indicator_raw
       )
     }
 
@@ -122,24 +124,11 @@ class CLIRunner : CliktCommand() {
   }
 
   private fun getDataSource(query: IndicatorQuery): ProcessBuilder? {
-    val indicator = query.indicatorID
-
     // Get command template from config file
     val indicatorsMap = Paths.get("..").resolve(props["indicators.map.path"] as String)
     val indicatorsJson = Files.readString(indicatorsMap)
-    val json = mapper.readTree(indicatorsJson)
-    val fetchers = json[indicator].elements()
-    // Select first fetcher for specified indicator in the config file
-    val fetcher = fetchers.next()
-    val cmdTemplate = fetcher["command"].asText()
-    // Instantiate $variables from fetchSpec arguments
-    val cmd = query.arguments.entries.fold(cmdTemplate) { acc, arg ->
-      if(arg.key == "tickers") {
-        acc.replace("\$${arg.key}", showTickers(arg.value as List<String>))
-      } else {
-        acc.replace("\$${arg.key}", arg.value.toString())
-      }
-    }
+    // Create command string from template and query
+    val cmd = IndicatorConfig(indicatorsJson).getFetchCommand(query)
 
     log.debug("Data Source query command: $cmd")
 
@@ -147,15 +136,5 @@ class CLIRunner : CliktCommand() {
       .directory(Paths.get("..").toFile())
       .redirectOutput(ProcessBuilder.Redirect.PIPE)
       .redirectError(ProcessBuilder.Redirect.to(Paths.get("error.log").toFile()))
-  }
-
-  private fun showTickers(tickers: List<String>): String {
-    return tickers.foldIndexed(StringBuilder()) { i, acc, ticker ->
-      if(i != tickers.size-1) {
-        acc.append(ticker).append(",")
-      } else {
-        acc.append(ticker)
-      }
-    }.toString()
   }
 }

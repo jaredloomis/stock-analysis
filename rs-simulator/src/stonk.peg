@@ -1,0 +1,12 @@
+//WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+integer = @{ "_"? ~ ASCII_DIGIT+ }
+decimal = @{ "_"? ~ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT* }
+ident = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+string = @{ "'" ~ ( "''" | (!"'" ~ ANY) )* ~ "'" }
+
+funcCallExpr = { ident ~ "(" ~ expr ~ ")" }
+
+expr = { funcCallExpr }
+
+stmt = { expr }

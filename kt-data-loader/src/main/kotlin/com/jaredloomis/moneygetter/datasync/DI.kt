@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import org.kodein.di.DI
 import org.kodein.di.bind
 import org.kodein.di.singleton
+import java.time.format.DateTimeFormatter
 
 
 val di = DI {
@@ -12,9 +13,10 @@ val di = DI {
 
   bind<ObjectMapper>() with singleton {
     val mapper = ObjectMapper()
-    //val module = SimpleModule()
-    //module.addDeserializer(IndicatorSpec::class.java, IndicatorSpecDeserializer())
-    //mapper.registerModule(module)
     mapper
+  }
+
+  bind<DateTimeFormatter>() with singleton {
+    DateTimeFormatter.ISO_INSTANT
   }
 }

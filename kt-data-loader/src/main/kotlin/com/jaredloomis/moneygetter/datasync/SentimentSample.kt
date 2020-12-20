@@ -2,6 +2,7 @@ package com.jaredloomis.moneygetter.datasync
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.JsonNode
+import org.kodein.di.instance
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -31,9 +32,9 @@ data class SentimentSample(
       .plus(23, ChronoUnit.HOURS)
       .plus(59, ChronoUnit.MINUTES)
 
-  override fun asSample(): IndicatorSample {
-    val formatter = DateTimeFormatter.ISO_INSTANT
+  private val formatter by di.instance<DateTimeFormatter>()
 
+  override fun asSample(): IndicatorSample {
     return IndicatorSample(
       UUID.randomUUID().toString(),
       ticker, // TODO: find ID of stock associated with ticker
@@ -41,7 +42,9 @@ data class SentimentSample(
       apiID,
       formatter.format(periodStart),
       formatter.format(periodEnd),
-      masterSentiment
+      formatter.format(fetchDate.toInstant()),
+      masterSentiment,
+      raw.toString()
     )
   }
 
