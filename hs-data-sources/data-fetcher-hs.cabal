@@ -28,8 +28,10 @@ library
       Error
       FinnhubAPI
       FinnhubLocal
+      IndicatorConfig
       Lib
       Quote
+      Schedule
       Sentiment
       SimFinAPI
       Statement
@@ -42,6 +44,7 @@ library
     , base >=4.7 && <5
     , bytestring
     , cassava
+    , containers
     , either >=5
     , http-client
     , http-client-tls

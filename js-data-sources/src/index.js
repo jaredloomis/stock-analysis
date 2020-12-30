@@ -38,7 +38,7 @@ const flows = [
       const value = parseNumber($('#quote-header-info .Fz\\(36px\\)').text());
       const raw = {
         url: res.request.uri.href,
-        //body: $('body').text()
+        body: $('body').text()
       };
 
       results.push(buildQuote(options.ticker, new Date(), value, "Yahoo.com", raw));

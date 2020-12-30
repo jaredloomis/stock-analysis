@@ -10,7 +10,6 @@ import com.github.ajalt.clikt.parameters.types.int
 import org.kodein.di.instance
 import org.slf4j.LoggerFactory
 import java.io.File
-import java.lang.StringBuilder
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.*
@@ -23,7 +22,7 @@ fun main(args: Array<String>) {
 class CLIRunner : CliktCommand() {
   private val log = LoggerFactory.getLogger(javaClass)
 
-  private val configFile: File by option(help = "Path to config file")
+  private val queryConfigFile: File by option(help = "Path to query config file")
     .file(mustBeReadable = true)
     .required()
   private val batchSize: Int? by option(help = "# of tickers per data source query")
@@ -41,6 +40,8 @@ class CLIRunner : CliktCommand() {
     .plus(Pair(PriceSample.INDICATOR_ID, PriceSample::class.java))
     .plus(Pair(SentimentSample.INDICATOR_ID, SentimentSample::class.java))
 
+  private var indicatorConfigCache: IndicatorConfig? = null
+
   override fun run() {
     val executor = createExecutorService()
 
@@ -50,11 +51,27 @@ class CLIRunner : CliktCommand() {
       executor.awaitTermination(10, TimeUnit.SECONDS)
     })
 
-    val config = loadQueryConfig()
-    log.debug("Running With Config $configFile:\n$config")
+    val queryConfig = loadQueryConfig()
+    log.debug("Running With Config $queryConfigFile:\n$queryConfig")
 
     // Execute queries
-    config.queries.forEach { indicatorQuery ->
+    getScheduler().createFetchPlan(queryConfig.queries.asSequence()).forEach { fetchPlan ->
+      val processBuilder = ProcessBuilder(fetchPlan.getCommand())
+        .directory(Paths.get("..").toFile())
+        .redirectOutput(ProcessBuilder.Redirect.PIPE)
+        .redirectError(ProcessBuilder.Redirect.to(Paths.get("data-source.error.log").toFile()))
+      executor.execute {
+        log.debug("Starting Process ${processBuilder.command()}")
+        val proc = processBuilder.start()
+        proc.inputStream.bufferedReader().lines().forEach { output ->
+          log.debug("Output: $output")
+          processOutputLine(fetchPlan.indicator.name, output)
+        }
+        proc.onExit().join()
+      }
+    }
+    /*
+    queryConfig.queries.forEach { indicatorQuery ->
       // Create ProcessBuilders for all Data Source queries
       val dataSourceProcessBuilders = indicatorQuery
         .batches(batchSize ?: 0)
@@ -73,46 +90,60 @@ class CLIRunner : CliktCommand() {
         }
       }
     }
+     */
 
     executor.shutdown()
     executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS)
-    log.info("Successfully completed.")
+
+    if(executor.isShutdown) {
+      log.info("Successfully completed")
+    } else {
+      log.error("Executor didn't shutdown")
+    }
   }
 
   private fun processOutputLine(indicatorID: String, line: String): List<IndicatorSample> {
-    // Read to JSON
-    val json = mapper.readTree(line)
-    val errors = LinkedList<String>()
-    val rawSamples = json.elements().asSequence().mapNotNull {
-      if (it.isTextual) {
-        errors.push(it.asText())
-        null
-      } else {
-        mapper.treeToValue(it, INDICATOR_MODEL_CLASSES[indicatorID])
+    try {
+      // Read to JSON
+      val json = mapper.readTree(line)
+      val errors = LinkedList<String>()
+      val rawSamples = json.elements().asSequence().mapNotNull {
+        if (it.isTextual) {
+          errors.push(it.asText())
+          null
+        } else {
+          logger.info(indicatorID)
+          mapper.treeToValue(it, INDICATOR_MODEL_CLASSES[indicatorID.split('-')[0]])
+        }
+      }.toList()
+
+      // Create an indicator sample
+      val samples = rawSamples.map { it.asSample() }
+
+      log.debug("Samples: $samples")
+
+      // Insert sample into the DB
+      samples.forEach { sample ->
+        db.indicatorSampleQueries.insert(
+          sample.sample_id,
+          sample.stock_id,
+          sample.indicator_id,
+          sample.fetch_source_id,
+          sample.start_time,
+          sample.end_time,
+          sample.fetch_time,
+          sample.indicator_value,
+          sample.indicator_raw
+        )
       }
-    }.toList()
 
-    // Create an indicator sample
-    val samples = rawSamples.map { it.asSample() }
-
-    log.debug("Samples: $samples")
-
-    // Insert sample into the DB
-    samples.forEach { sample ->
-      db.indicatorSampleQueries.insert(
-        sample.sample_id,
-        sample.stock_id,
-        sample.indicator_id,
-        sample.fetch_source_id,
-        sample.start_time,
-        sample.end_time,
-        sample.fetch_time,
-        sample.indicator_value,
-        sample.indicator_raw
-      )
+      return samples
+    } catch(ex: Exception) {
+      log.error("Couldn't process output line of $indicatorID: $line\n$ex")
+      throw ex
+      /*ex.printStackTrace()
+      return emptyList()*/
     }
-
-    return samples
   }
 
   private fun createExecutorService(): ExecutorService {
@@ -120,21 +151,37 @@ class CLIRunner : CliktCommand() {
   }
 
   private fun loadQueryConfig(): IndicatorQueryConfig {
-    return mapper.readValue(configFile, IndicatorQueryConfig::class.java)
+    return mapper.readValue(queryConfigFile, IndicatorQueryConfig::class.java)
   }
 
   private fun getDataSource(query: IndicatorQuery): ProcessBuilder? {
-    // Get command template from config file
-    val indicatorsMap = Paths.get("..").resolve(props["indicators.map.path"] as String)
-    val indicatorsJson = Files.readString(indicatorsMap)
+    // TODO Scheduler, refactor method
     // Create command string from template and query
-    val cmd = IndicatorConfig(indicatorsJson).getFetchCommand(query)
+    val cmd = getIndicatorConfig().getFetchCommand(query)
 
     log.debug("Data Source query command: $cmd")
 
     return ProcessBuilder(cmd.split(" "))
       .directory(Paths.get("..").toFile())
       .redirectOutput(ProcessBuilder.Redirect.PIPE)
-      .redirectError(ProcessBuilder.Redirect.to(Paths.get("error.log").toFile()))
+      .redirectError(ProcessBuilder.Redirect.to(Paths.get("data-source.error.log").toFile()))
+  }
+
+  private fun getScheduler(): IndicatorScheduler {
+    return IndicatorScheduler(getIndicatorConfig().getGroups())
+  }
+
+  private fun getIndicatorConfig(): IndicatorConfig {
+    if(indicatorConfigCache != null) {
+      return indicatorConfigCache!!
+    }
+
+    // Get command template from config file
+    val indicatorsMap = Paths.get("..").resolve(props["indicators.map.path"] as String)
+    val indicatorsJson = Files.readString(indicatorsMap)
+    // Create command string from template and query
+    val conf = IndicatorConfig(indicatorsJson)
+    indicatorConfigCache = conf
+    return conf
   }
 }

@@ -15,6 +15,7 @@ import Options.Applicative.Builder
 import Data.Aeson (ToJSON, encode)
 import Data.List.Split (chunksOf)
 import Control.Monad (sequence)
+import Data.Time.Clock (UTCTime(..))
 import Data.Time.Calendar (Day)
 import Data.Time.Format (parseTimeM, defaultTimeLocale, iso8601DateFormat)
 
@@ -28,6 +29,9 @@ import qualified Data.ByteString.Lazy.Char8 as B (putStrLn)
 
 import qualified FinnhubAPI as FinnhubAPI
 import qualified FinnhubLocal as FinnhubLocal
+import qualified Schedule as Schedule
+import qualified IndicatorConfig as IndicatorConfig
+import IndicatorConfig (IndicatorConfig(..), IndicatorTime(..), DataSourceSpec)
 import Error (StockError(..))
 
 main :: IO ()
@@ -73,6 +77,7 @@ execRequest (CLIRequest indicator timestr _ (Just tickers)) | "price" `T.isPrefi
     results <- FinnhubAPI.quoteMany finnhubToken tickers
     return $ map (bimap StockApiError A.toJSON) results
 
+  -- XXX: Currrently only processing timestamp requests at the resolution of days (ignoring time)
   date :: Maybe Day
   date = parseTime timestr
 execRequest (CLIRequest indicator timestr _ (Just tickers)) | "sentiment" `T.isPrefixOf` indicator = do
@@ -81,6 +86,55 @@ execRequest (CLIRequest indicator timestr _ (Just tickers)) | "sentiment" `T.isP
 execRequest (CLIRequest indicator timestr _ tickers) = return [Left . StockError . T.pack $
     "unsupported operation. Indicator: " ++ show indicator ++ " args: " ++ show tickers
   ]
+
+----
+
+execRequest' :: CLIRequest -> IO [Either StockError A.Value]
+execRequest' (CLIRequest indicator timestr _ (Just tickers)) | "price" `T.isPrefixOf` indicator =
+  fromMaybe finnhubApiPrice . fmap execByIndicatorSubId $ msubIndicator
+ where
+  (_, indicatorParts) = parseIndicator indicator
+  msubIndicator = if length indicatorParts >= 1 then Just (indicatorParts !! 0) else Nothing
+
+  execByIndicatorSubId :: Text -> IO [Either StockError A.Value]
+  execByIndicatorSubId "finnhub_local" = finnhubLocalPrice
+  execByIndicatorSubId _               = finnhubApiPrice
+
+  finnhubLocalPrice :: IO [Either StockError A.Value]
+  finnhubLocalPrice = if isJust date
+    then do
+      results <- mapM (FinnhubLocal.quoteMany (fromJust date)) tickers
+      return . pure . fmap (A.toJSON . concat) . sequence $ results
+    else
+      return []
+
+  finnhubApiPrice :: IO [Either StockError A.Value]
+  finnhubApiPrice = do
+    results <- FinnhubAPI.quoteMany finnhubToken tickers
+    return $ map (bimap StockApiError A.toJSON) results
+
+  -- XXX: Currrently only processing timestamp requests at the resolution of days (ignoring time)
+  date :: Maybe Day
+  date = parseTime timestr
+execRequest' (CLIRequest indicator timestr _ (Just tickers)) | "sentiment" `T.isPrefixOf` indicator = do
+  results <- FinnhubAPI.newsSentimentMany finnhubToken tickers
+  return $ map (bimap StockApiError A.toJSON) results
+execRequest' (CLIRequest indicator timestr _ tickers) = return [Left . StockError . T.pack $
+    "unsupported operation. Indicator: " ++ show indicator ++ " args: " ++ show tickers
+  ]
+
+availableSources :: FilePath -> T.Text -> Maybe IndicatorTime -> IO [DataSourceSpec]
+availableSources configFilePath indicatorPrefix mtime = do
+  -- Parse all sources
+  IndicatorConfig configMap <- IndicatorConfig.loadIndicatorConfig configFilePath
+  -- Find appropriate sources:
+  -- 1. Available at specified time (if any).
+  -- 2. Implemented in this package. TODO TODO TODO
+  let allSources = IndicatorConfig.groupSources $ configMap M.! indicatorPrefix
+  let availSources = maybe (M.elems allSources) (\time -> filter (`Schedule.isAvailableAt` time) . M.elems $ allSources) mtime
+  return availSources
+
+----
 
 parseIndicator :: Text -> (Text, [Text])
 parseIndicator text = (T.takeWhile (/= '-') text, tail $ T.splitOn "-" text)

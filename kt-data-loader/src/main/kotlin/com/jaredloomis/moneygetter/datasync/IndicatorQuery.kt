@@ -5,14 +5,17 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import org.kodein.di.instance
 import java.nio.file.Files
 import java.nio.file.Paths
+import java.time.Duration
 
 
 /**
  * An {@code IndicatorQuery} is an indicator ID, along with arguments to pass to the indicator's data source(s).
  */
 data class IndicatorQuery(
-  @JsonProperty("indicator") val indicatorID: String,
-  @JsonProperty("arguments") val arguments: MutableMap<String, Any>
+  @JsonProperty("indicator")  val indicatorID: String,
+  @JsonProperty("arguments")  val arguments: MutableMap<String, Any>,
+  @JsonProperty("schedule")   val scheduleRaw: List<String>? = listOf("now", "now"),
+  @JsonProperty("sampleRate") val sampleRate: Long? = 86400000
 ) {
   private val mapper by di.instance<ObjectMapper>()
 
@@ -49,6 +52,23 @@ data class IndicatorQuery(
       }
     } else {
       listOf(this)
+    }
+  }
+
+  fun getSchedule(): IndicatorSchedule {
+    return if(scheduleRaw != null) {
+      IndicatorSchedule(scheduleRaw.map { IndicatorTime.fromString(it) })
+    } else {
+      IndicatorSchedule(listOf(IndicatorTime.Now, IndicatorTime.Now))
+    }
+  }
+
+  fun getSampleRate(): Duration {
+    val rateNum = arguments.getOrDefault("sampleRate", null) as Long?
+    return if(rateNum != null) {
+      Duration.ofMillis(rateNum)
+    } else {
+      Duration.ofDays(1)
     }
   }
 

@@ -1,26 +1,23 @@
 {
   "price": {
     "price-finnhub_local": {
-      "command": "hs-data-sources/.stack-work/install/x86_64-linux-tinfo6/2db2873d4967e16258cf6f3db3df2f229cd2d37ade2547b9e6bdb45d98e93d5c/8.8.3/bin/data-fetcher-hs-exe -i price -t $time $tickers",
-      "realtime": false,
-      "historical": {
-        "range": ["1992-06-15", "2019-12-31"]
-      }
+      "command": "hs-data-sources/.stack-work/install/x86_64-linux-tinfo6/2db2873d4967e16258cf6f3db3df2f229cd2d37ade2547b9e6bdb45d98e93d5c/8.8.3/bin/data-fetcher-hs-exe -i price-finnhub_local -t $time $tickers",
+      "schedule": ["1992-06-15", "2019-12-31"]
     },
     "price-yahoo": {
       "command": "node js-data-sources/src/index.js fetch-quote $tickers",
-      "realtime": true
+      "schedule": ["now", "now"]
     },
     "price-finnhub_api": {
       "command": "hs-data-sources/.stack-work/install/x86_64-linux-tinfo6/2db2873d4967e16258cf6f3db3df2f229cd2d37ade2547b9e6bdb45d98e93d5c/8.8.3/bin/data-fetcher-hs-exe -i price $tickers",
-      "realtime": true
+      "schedule": ["now", "now"]
     }
   },
   "sentiment": {
     "aliases": ["news_sentiment"],
     "sentiment-finnhub_news": {
       "command": "hs-data-sources/.stack-work/install/x86_64-linux-tinfo6/2db2873d4967e16258cf6f3db3df2f229cd2d37ade2547b9e6bdb45d98e93d5c/8.8.3/bin/data-fetcher-hs-exe -i sentiment $tickers",
-      "realtime": true
+      "schedule": ["now", "now"]
     }
   }
 }
