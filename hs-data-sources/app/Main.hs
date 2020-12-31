@@ -15,9 +15,10 @@ import Options.Applicative.Builder
 import Data.Aeson (ToJSON, encode)
 import Data.List.Split (chunksOf)
 import Control.Monad (sequence)
-import Data.Time.Clock (UTCTime(..))
+import Data.Time.Clock (UTCTime(..), utctDay)
 import Data.Time.Calendar (Day)
-import Data.Time.Format (parseTimeM, defaultTimeLocale, iso8601DateFormat)
+--import Data.Time.Format (parseTimeM, defaultTimeLocale, iso8601DateFormat)
+import Data.Time.Format.ISO8601
 
 import qualified Data.Map.Strict as M
 import qualified Data.Text as T
@@ -33,6 +34,8 @@ import qualified Schedule as Schedule
 import qualified IndicatorConfig as IndicatorConfig
 import IndicatorConfig (IndicatorConfig(..), IndicatorTime(..), DataSourceSpec)
 import Error (StockError(..))
+
+import Debug.Trace (trace)
 
 main :: IO ()
 main = do
@@ -50,10 +53,11 @@ main = do
   case tickerChunks of
     Just chunks ->
       (flip mapM_) chunks $ \chunk -> do
-        printResults =<< execRequest req{ reqTickersRaw = (Just chunk) }
+        printResults =<< execRequest' req{ reqTickersRaw = (Just chunk) }
     Nothing ->
-      printResults =<< execRequest req
+      printResults =<< execRequest' req
 
+{-
 execRequest :: CLIRequest -> IO [Either StockError A.Value]
 execRequest (CLIRequest indicator timestr _ (Just tickers)) | "price" `T.isPrefixOf` indicator =
   let (_, indicatorParts) = parseIndicator indicator
@@ -67,7 +71,7 @@ execRequest (CLIRequest indicator timestr _ (Just tickers)) | "price" `T.isPrefi
   finnhubLocalPrice :: IO [Either StockError A.Value]
   finnhubLocalPrice = if isJust date
     then do
-      results <- mapM (FinnhubLocal.quoteMany (fromJust date)) tickers
+      results <- mapM (FinnhubLocal.quoteMany (utctDay . fromJust $ date)) tickers
       return . pure . fmap (A.toJSON . concat) . sequence $ results
     else
       return []
@@ -78,7 +82,7 @@ execRequest (CLIRequest indicator timestr _ (Just tickers)) | "price" `T.isPrefi
     return $ map (bimap StockApiError A.toJSON) results
 
   -- XXX: Currrently only processing timestamp requests at the resolution of days (ignoring time)
-  date :: Maybe Day
+  date :: Maybe UTCTime
   date = parseTime timestr
 execRequest (CLIRequest indicator timestr _ (Just tickers)) | "sentiment" `T.isPrefixOf` indicator = do
   results <- FinnhubAPI.newsSentimentMany finnhubToken tickers
@@ -86,6 +90,7 @@ execRequest (CLIRequest indicator timestr _ (Just tickers)) | "sentiment" `T.isP
 execRequest (CLIRequest indicator timestr _ tickers) = return [Left . StockError . T.pack $
     "unsupported operation. Indicator: " ++ show indicator ++ " args: " ++ show tickers
   ]
+  -}
 
 ----
 
@@ -97,15 +102,17 @@ execRequest' (CLIRequest indicator timestr _ (Just tickers)) | "price" `T.isPref
   msubIndicator = if length indicatorParts >= 1 then Just (indicatorParts !! 0) else Nothing
 
   execByIndicatorSubId :: Text -> IO [Either StockError A.Value]
-  execByIndicatorSubId "finnhub_local" = finnhubLocalPrice
-  execByIndicatorSubId _               = finnhubApiPrice
+  execByIndicatorSubId dataSourceID
+    | dataSourceID == FinnhubLocal.dataSourceID = finnhubLocalPrice
+    | otherwise = finnhubApiPrice
 
   finnhubLocalPrice :: IO [Either StockError A.Value]
-  finnhubLocalPrice = if isJust date
-    then do
-      results <- mapM (FinnhubLocal.quoteMany (fromJust date)) tickers
+  finnhubLocalPrice = case date of
+    Just dateTime -> do
+      results <- mapM (FinnhubLocal.quoteMany (utctDay dateTime)) tickers
       return . pure . fmap (A.toJSON . concat) . sequence $ results
-    else
+    Nothing -> do
+      hPutStrLn stderr "Must provide timestamp for indicator source 'price-finnhub_local'"
       return []
 
   finnhubApiPrice :: IO [Either StockError A.Value]
@@ -114,7 +121,7 @@ execRequest' (CLIRequest indicator timestr _ (Just tickers)) | "price" `T.isPref
     return $ map (bimap StockApiError A.toJSON) results
 
   -- XXX: Currrently only processing timestamp requests at the resolution of days (ignoring time)
-  date :: Maybe Day
+  date :: Maybe UTCTime
   date = parseTime timestr
 execRequest' (CLIRequest indicator timestr _ (Just tickers)) | "sentiment" `T.isPrefixOf` indicator = do
   results <- FinnhubAPI.newsSentimentMany finnhubToken tickers
@@ -139,8 +146,12 @@ availableSources configFilePath indicatorPrefix mtime = do
 parseIndicator :: Text -> (Text, [Text])
 parseIndicator text = (T.takeWhile (/= '-') text, tail $ T.splitOn "-" text)
 
-parseTime :: Text -> Maybe Day
-parseTime = parseTimeM True defaultTimeLocale (iso8601DateFormat Nothing) . T.unpack
+parseTime :: Text -> Maybe UTCTime
+parseTime = formatParseM (utcTimeFormat dayFormat timeFormat) . T.unpack
+ where
+  dayFormat  = calendarFormat ExtendedFormat
+  timeFormat = timeOfDayFormat ExtendedFormat
+--parseTime = parseTimeM True defaultTimeLocale (iso8601DateFormat Nothing) . T.unpack
 
 --
 -- Config

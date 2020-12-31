@@ -4,14 +4,14 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE OverloadedStrings #-}
-module FinnhubLocal where
+module FinnhubLocal (dataSourceID, quoteMany, quote) where
 
 import GHC.Generics (Generic)
 import Data.List (intersperse, find)
 import Data.Proxy
 import Data.Bifunctor (bimap)
 import Data.Maybe (fromMaybe)
-import Control.Applicative (liftA2)
+import Control.Applicative (liftA2, (<|>))
 
 import Data.Aeson
 import Data.Text (Text)
@@ -21,6 +21,7 @@ import Network.HTTP.Client (newManager)
 import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Data.Time (UTCTime(..), Day, getCurrentTime, utctDay, toGregorian)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
+import System.FilePath.Posix ((</>))
 
 import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString.Internal as BI
@@ -35,21 +36,21 @@ import Error
 
 type FinnhubNumber = Double
 
-finnhubLocalApiId = "finnhub-local-files"
+dataSourceID = "finnhub_local"
 
 data FinnhubQuoteRaw = FinnhubQuoteRaw {
   finnhubID :: Text,
   symbol :: Text,
   klass :: Text,
-  open :: FinnhubNumber,
-  high :: FinnhubNumber,
-  low :: FinnhubNumber,
-  close :: FinnhubNumber,
+  open :: Maybe FinnhubNumber,
+  high :: Maybe FinnhubNumber,
+  low :: Maybe FinnhubNumber,
+  close :: Maybe FinnhubNumber,
   volume :: Int,
   div :: Text,
   adjustment :: Text,
-  bid :: FinnhubNumber,
-  ask :: FinnhubNumber
+  bid :: Maybe FinnhubNumber,
+  ask :: Maybe FinnhubNumber
 } deriving (Eq, Show, Generic)
 
 instance ToJSON FinnhubQuoteRaw where
@@ -104,7 +105,7 @@ instance C.FromNamedRecord FinnhubQuoteRaw where
 
 quoteMany :: Day -> Text -> IO (Either StockError [Quote FinnhubQuoteRaw])
 quoteMany day symbol = do
-  let file = filePathForDay day
+  let file = finnhubDataPrefix </> fileNameForDay day
   csv <- B.readFile file
   let rawQuoteEither = C.decodeByName csv
   return $ bimap LocalIOError (map normalizeQuote . V.toList . snd) rawQuoteEither
@@ -113,13 +114,16 @@ quoteMany day symbol = do
       Quote {
         quoteTicker = symbol,
         quoteTime   = dayToUTC day,
-        quoteValue  = close rawQuote,
-        quoteApiId  = finnhubLocalApiId,
+        quoteValue  = fromMaybe (-1) $ close rawQuote <|> open rawQuote <|> high rawQuote <|> low rawQuote <|> bid rawQuote <|> ask rawQuote,
+        quoteApiId  = dataSourceID,
         quoteRaw    = rawQuote
       }
 
-   filePathForDay :: Day -> FilePath
-   filePathForDay day =
+   finnhubDataPrefix :: FilePath
+   finnhubDataPrefix = "data" </> "finnhub" </> "stock-eod-prices"
+
+   fileNameForDay :: Day -> FilePath
+   fileNameForDay day =
      let (year, month, dayNum) = toGregorian day
      in show year ++ show month ++ show dayNum ++ ".csv"
 

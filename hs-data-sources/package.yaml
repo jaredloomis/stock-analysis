@@ -32,6 +32,7 @@ library:
   - trifecta
   - cassava
   - containers
+  - filepath
 
 executables:
   data-fetcher-hs-exe:

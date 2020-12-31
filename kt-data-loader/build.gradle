@@ -1,11 +1,14 @@
 buildscript {
+  ext.kotlin_version = '1.4.30-M1'
   repositories {
     google()
     mavenCentral()
     jcenter()
+    maven { url 'https://dl.bintray.com/kotlin/kotlin-eap' }
   }
   dependencies {
     classpath 'com.squareup.sqldelight:gradle-plugin:1.4.2'
+    classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
   }
 }
 
@@ -14,11 +17,13 @@ plugins {
   id "application"
 }
 apply plugin: 'com.squareup.sqldelight'
+apply plugin: 'kotlin'
 
 repositories {
   mavenCentral()
   jcenter()
   google()
+  maven { url 'https://dl.bintray.com/kotlin/kotlin-eap' }
 }
 
 dependencies {
@@ -31,6 +36,7 @@ dependencies {
   implementation "org.slf4j:slf4j-api:2.0.0-alpha1"
   implementation "org.slf4j:slf4j-log4j12:2.0.0-alpha1"
   implementation "log4j:log4j:1.2.17"
+  implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
 }
 
 mainClassName = "com.jaredloomis.moneygetter.datasync.MainKt"
@@ -57,5 +63,15 @@ sqldelight {
   StockDatabase {
     packageName = "com.jaredloomis.moneygetter.datasync"
     dialect = "postgresql"
+  }
+}
+compileKotlin {
+  kotlinOptions {
+    jvmTarget = "1.8"
+  }
+}
+compileTestKotlin {
+  kotlinOptions {
+    jvmTarget = "1.8"
   }
 }

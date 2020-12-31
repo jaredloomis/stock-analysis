@@ -46,6 +46,7 @@ library
     , cassava
     , containers
     , either >=5
+    , filepath
     , http-client
     , http-client-tls
     , servant >=0.16

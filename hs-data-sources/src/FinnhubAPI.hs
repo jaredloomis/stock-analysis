@@ -89,7 +89,7 @@ finnhubAPI :: Proxy FinnhubAPI
 finnhubAPI = Proxy
 
 finnhubApiId :: Text
-finnhubApiId = "finnhub"
+finnhubApiId = "finnhub_api"
 
 getQuote :: Text -> Text -> ClientM FinnhubQuoteRaw
 getNewsSentiment :: Text -> Text -> ClientM FinnhubNewsSentimentRes
