@@ -10,14 +10,18 @@ const args = yargs
     .string("jqExpression")
   .help()
   .argv;
-//console.log(args)
-const command = args._[0];
 
+//console.log(args)
+
+const command = args._[0];
 switch(command) {
   case "fetch-quote":
     fetchYahooQuote(args.tickers.flatMap(ticker => ticker.split(',')));
     break;
   case "transform":
     transform(args.source, args.jqExpression).then(console.log);
+    break;
+  default:
+    console.error(`Unrecognized command: ${command}`);
     break;
 }

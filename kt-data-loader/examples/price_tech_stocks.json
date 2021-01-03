@@ -3,9 +3,9 @@
     {
       "indicator": "price",
       "arguments": {
-        "tickers": ["AAPL", "MSFT", "TSLA", "AMD", "INTC", "FB"]
+        "tickers": ["AAPL"]
       },
-      "schedule": ["1992-07-15", "1999-06-15"]
+      "schedule": ["1992-07-15", "1992-07-20"]
     }
   ]
 }

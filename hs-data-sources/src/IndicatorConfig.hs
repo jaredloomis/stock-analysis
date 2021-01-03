@@ -14,7 +14,7 @@ import qualified Data.Aeson.Types as A
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.IO as TIO
-import qualified Data.Map as M
+import qualified Data.Map.Strict as M
 import qualified Data.HashMap.Strict as HM
 import qualified Data.ByteString.Lazy as BS
 
@@ -28,8 +28,8 @@ newtype IndicatorConfig = IndicatorConfig {
 } deriving (Eq, Show, Monoid, Semigroup, ToJSON, FromJSON)
 
 data DataSourceGroupSpec = DataSourceGroupSpec {
-  groupSources :: M.Map T.Text DataSourceSpec,
-  groupAliases :: Maybe [T.Text]
+  groupSources :: !(M.Map T.Text DataSourceSpec),
+  groupAliases :: !(Maybe [T.Text])
 } deriving (Eq, Show, Generic)
 
 instance ToJSON DataSourceGroupSpec where
@@ -44,8 +44,8 @@ instance FromJSON DataSourceGroupSpec where
      parseSources = sequence . fmap parseJSON . M.fromList . HM.toList $ obj
 
 data DataSourceSpec = DataSourceSpec {
-  command  :: Text,
-  schedule :: [IndicatorTime]
+  command  :: !Text,
+  schedule :: ![IndicatorTime]
 } deriving (Eq, Show, Generic)
 
 instance ToJSON DataSourceSpec

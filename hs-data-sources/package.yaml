@@ -17,6 +17,9 @@ dependencies:
 
 library:
   source-dirs: src
+  ghc-options:
+    - -O2
+    - -Wall
   dependencies:
   - text >=1.2.3.0 && <1.3
   - bytestring #>= 0.11.0.0
@@ -42,6 +45,8 @@ executables:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    - -O2
+    - -Wall
     dependencies:
     - data-fetcher-hs
     - text

@@ -4,10 +4,14 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.time.Instant
+import kotlin.math.ceil
 
-data class IndicatorSampleFetchPlan(val query: IndicatorQuery, val indicator: IndicatorSpec, val instant: Instant, val cmdTemplate: String) {
+/**
+ * A plan to fetch a sample or set of samples
+ */
+data class IndicatorSampleFetchPlan(val query: IndicatorQuery, val indicator: IndicatorSpec, val additionalArgs: Map<String, String>) {
   fun getCommand(): List<String> {
-    val cmdWithArgs = query.arguments.entries.fold(cmdTemplate) { acc, arg ->
+    val cmdWithArgs = query.arguments.entries.fold(getCommandTemplate()) { acc, arg ->
       if(arg.key == "tickers") {
         acc.replace("\$${arg.key}", showTickers(arg.value as List<String>))
       } else {
@@ -15,16 +19,28 @@ data class IndicatorSampleFetchPlan(val query: IndicatorQuery, val indicator: In
       }
     }
 
-    val cmdWithTime = cmdWithArgs.replace("\$time", instant.toString())
+    val cmdWithTime = cmdWithArgs.replace("\$time", getTimeStr())
 
     return cmdWithTime.split(" ")
+  }
+
+  private fun getTimeStr(): String {
+    return additionalArgs.getOrDefault("time", query.arguments["time"]) as String
+  }
+
+  private fun getCommandTemplate(): String {
+    return indicator.getCommandFor(query)
+  }
+
+  override fun toString(): String {
+    return "IndicatorSampleFetchPlan(query=$query, indicator=$indicator, additionalArgs=$additionalArgs)"
   }
 }
 
 data class IndicatorScheduler(val groups: List<IndicatorGroupSpec>) {
-  val logger: Logger = LoggerFactory.getLogger(javaClass)
+  private val logger: Logger = LoggerFactory.getLogger(javaClass)
 
-  fun createFetchPlan(queries: Sequence<IndicatorQuery>): List<IndicatorSampleFetchPlan> {
+  fun createFetchPlan(queries: Sequence<IndicatorQuery>, batchSize: Int?): List<IndicatorSampleFetchPlan> {
     val samples = mutableListOf<Pair<IndicatorQuery, Instant>>()
 
     for(query in queries) {
@@ -52,7 +68,7 @@ data class IndicatorScheduler(val groups: List<IndicatorGroupSpec>) {
           null
         } else {
           val indicator = indicators[0]
-          IndicatorSampleFetchPlan(sample.first, indicator, sample.second, indicator.getCommandFor(sample.first))
+          IndicatorSampleFetchPlan(sample.first, indicator, mapOf(Pair("time", sample.second.toString())))
         }
       }
       .toList()

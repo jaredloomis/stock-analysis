@@ -12,11 +12,11 @@ import Data.Aeson
 
 -- | Stores a quote for a stock at a specific time
 data Quote a = Quote {
-  quoteTicker :: Text,
-  quoteTime :: UTCTime,
-  quoteValue :: Double,
-  quoteApiId :: Text,
-  quoteRaw :: a
+  quoteTicker :: !Text,
+  quoteTime :: !UTCTime,
+  quoteValue :: !Double,
+  quoteApiId :: !Text,
+  quoteRaw :: !a
 } deriving (Eq, Show, Generic, ToJSON, FromJSON)
 
 data AnyQuote = forall a. AnyQuote (Quote a)

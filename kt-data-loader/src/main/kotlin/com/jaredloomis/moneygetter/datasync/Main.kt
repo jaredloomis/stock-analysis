@@ -3,6 +3,7 @@ package com.jaredloomis.moneygetter.datasync
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.parameters.options.default
+import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.file
@@ -14,6 +15,8 @@ import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.*
 import java.util.concurrent.*
+import kotlin.math.min
+import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
   CLIRunner().main(args)
@@ -25,11 +28,14 @@ class CLIRunner : CliktCommand() {
   private val queryConfigFile: File by option(help = "Path to query config file")
     .file(mustBeReadable = true)
     .required()
+  // TODO make functional again
   private val batchSize: Int? by option(help = "# of tickers per data source query")
     .int()
   private val concurrentQueries: Int by option(help = "# of data source queries to execute at the same time")
     .int()
-    .default(3)
+    .default(6)
+  private val interactive: Boolean by option(help = "Interactive mode")
+    .flag(default = false)
 
   private val mapper by di.instance<ObjectMapper>()
   private val props by di.instance<Properties>()
@@ -54,43 +60,40 @@ class CLIRunner : CliktCommand() {
     val queryConfig = loadQueryConfig()
     log.debug("Running With Config $queryConfigFile:\n$queryConfig")
 
+    // Create query plan
+    val fetchPlans = getScheduler().createFetchPlan(queryConfig.queries.asSequence(), batchSize=batchSize)
+
+    // Confirm plan with user
+    log.info("Here's the plan:")
+    fetchPlans.forEach { log.info(it.toString()) }
+    // Allow cancellation in interactive mode
+    if(interactive) {
+      log.info("Continue? (y/n)")
+      with(Scanner(System.`in`)) {
+        if (hasNextLine() && nextLine() != "y") {
+          exitProcess(0)
+        }
+      }
+    }
+
     // Execute queries
-    getScheduler().createFetchPlan(queryConfig.queries.asSequence()).forEach { fetchPlan ->
+    fetchPlans.forEach { fetchPlan ->
       val processBuilder = ProcessBuilder(fetchPlan.getCommand())
         .directory(Paths.get("..").toFile())
         .redirectOutput(ProcessBuilder.Redirect.PIPE)
         .redirectError(ProcessBuilder.Redirect.to(Paths.get("data-source.error.log").toFile()))
       executor.execute {
-        log.debug("Starting Process ${processBuilder.command()}")
+        log.info("Starting Process ${processBuilder.command()}")
         val proc = processBuilder.start()
         proc.inputStream.bufferedReader().lines().forEach { output ->
+          val outputTeaser = output.substring(0, min(output.length, 250)) + " ..."
+          log.info("Received output from ${processBuilder.command()}: $outputTeaser")
           log.debug("Output: $output")
           processOutputLine(fetchPlan.indicator.name, output)
         }
         proc.onExit().join()
       }
     }
-    /*
-    queryConfig.queries.forEach { indicatorQuery ->
-      // Create ProcessBuilders for all Data Source queries
-      val dataSourceProcessBuilders = indicatorQuery
-        .batches(batchSize ?: 0)
-        .map { getDataSource(it)!! }
-
-      // And add them to the executor queue
-      dataSourceProcessBuilders.forEach { processBuilder ->
-        executor.execute {
-          log.debug("Starting Process ${processBuilder.command()}")
-          val proc = processBuilder.start()
-          proc.inputStream.bufferedReader().lines().forEach { output ->
-            log.debug("Output: $output")
-            processOutputLine(indicatorQuery.indicatorID, output)
-          }
-          proc.onExit().join()
-        }
-      }
-    }
-     */
 
     executor.shutdown()
     executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS)
@@ -112,7 +115,7 @@ class CLIRunner : CliktCommand() {
           errors.push(it.asText())
           null
         } else {
-          logger.info(indicatorID)
+          logger.debug("Output from $indicatorID:\n$line")
           mapper.treeToValue(it, INDICATOR_MODEL_CLASSES[indicatorID.split('-')[0]])
         }
       }.toList()
@@ -120,10 +123,9 @@ class CLIRunner : CliktCommand() {
       // Create an indicator sample
       val samples = rawSamples.map { it.asSample() }
 
-      log.debug("Samples: $samples")
-
       // Insert sample into the DB
       samples.forEach { sample ->
+        log.info("Inserting sample $sample")
         db.indicatorSampleQueries.insert(
           sample.sample_id,
           sample.stock_id,
@@ -141,30 +143,15 @@ class CLIRunner : CliktCommand() {
     } catch(ex: Exception) {
       log.error("Couldn't process output line of $indicatorID: $line\n$ex")
       throw ex
-      /*ex.printStackTrace()
-      return emptyList()*/
     }
   }
 
   private fun createExecutorService(): ExecutorService {
-    return ThreadPoolExecutor(0, concurrentQueries, 30L, TimeUnit.MINUTES, LinkedBlockingQueue<Runnable>())
+    return ThreadPoolExecutor(1, concurrentQueries, 30L, TimeUnit.MINUTES, LinkedBlockingQueue<Runnable>())
   }
 
   private fun loadQueryConfig(): IndicatorQueryConfig {
     return mapper.readValue(queryConfigFile, IndicatorQueryConfig::class.java)
-  }
-
-  private fun getDataSource(query: IndicatorQuery): ProcessBuilder? {
-    // TODO Scheduler, refactor method
-    // Create command string from template and query
-    val cmd = getIndicatorConfig().getFetchCommand(query)
-
-    log.debug("Data Source query command: $cmd")
-
-    return ProcessBuilder(cmd.split(" "))
-      .directory(Paths.get("..").toFile())
-      .redirectOutput(ProcessBuilder.Redirect.PIPE)
-      .redirectError(ProcessBuilder.Redirect.to(Paths.get("data-source.error.log").toFile()))
   }
 
   private fun getScheduler(): IndicatorScheduler {

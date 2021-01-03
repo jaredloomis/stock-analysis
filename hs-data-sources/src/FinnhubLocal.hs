@@ -4,7 +4,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE OverloadedStrings #-}
-module FinnhubLocal (dataSourceID, quoteMany, quote) where
+module FinnhubLocal (dataSourceID, quoteMany, quote, FinnhubQuoteRaw) where
 
 import GHC.Generics (Generic)
 import Data.List (intersperse, find)
@@ -29,6 +29,7 @@ import qualified Data.Text    as T
 import qualified Data.Text.IO as T
 import qualified Data.Vector as V
 import qualified Data.Csv as C
+import qualified Data.Set as S
 
 import Quote (Quote(..))
 import Sentiment (Sentiment(..))
@@ -103,8 +104,11 @@ instance C.FromNamedRecord FinnhubQuoteRaw where
     <*> select "bid" r
     <*> select "ask" r
 
-quoteMany :: Day -> Text -> IO (Either StockError [Quote FinnhubQuoteRaw])
-quoteMany day symbol = do
+-- | 'Greedy' indicates that this function *returns unrelated quotes along with the requested quote*.
+--   The line of thinking is: if we're already opening the file and parsing it, we might as well return the
+--   parsed quotes.
+quoteGreedy :: Day -> Text -> IO (Either StockError [Quote FinnhubQuoteRaw])
+quoteGreedy day symbol = do
   let file = finnhubDataPrefix </> fileNameForDay day
   csv <- B.readFile file
   let rawQuoteEither = C.decodeByName csv
@@ -112,7 +116,7 @@ quoteMany day symbol = do
  where
    normalizeQuote rawQuote =
       Quote {
-        quoteTicker = symbol,
+        quoteTicker = FinnhubLocal.symbol rawQuote,
         quoteTime   = dayToUTC day,
         quoteValue  = fromMaybe (-1) $ close rawQuote <|> open rawQuote <|> high rawQuote <|> low rawQuote <|> bid rawQuote <|> ask rawQuote,
         quoteApiId  = dataSourceID,
@@ -125,14 +129,18 @@ quoteMany day symbol = do
    fileNameForDay :: Day -> FilePath
    fileNameForDay day =
      let (year, month, dayNum) = toGregorian day
-     in show year ++ show month ++ show dayNum ++ ".csv"
+     in show year ++ showAtLeastTwoDigits month ++ showAtLeastTwoDigits dayNum ++ ".csv"
+
+   showAtLeastTwoDigits num
+     | num < 10 && num >= 0 = '0' : show num
+     | otherwise            = show num
 
    dayToUTC :: Day -> UTCTime
    dayToUTC day = UTCTime day 0
 
 quote :: Day -> Text -> IO (Either StockError (Quote FinnhubQuoteRaw, [Quote FinnhubQuoteRaw]))
 quote day symbol = do
-  quotes <- quoteMany day symbol
+  quotes <- quoteGreedy day symbol
   return $ liftA2 (,) (collapseError . fmap (find correctSymbol) $ quotes) quotes
  where
   correctSymbol quote = FinnhubLocal.symbol (quoteRaw quote) == symbol
@@ -141,3 +149,37 @@ quote day symbol = do
   collapseError = fromMaybe (Left noMatchError) . sequence
 
   noMatchError = StockError "Didn't find any quotes in csv matching specified symbol."
+
+quoteMany :: Day -> [Text] -> IO (Either StockError [Quote FinnhubQuoteRaw])
+quoteMany day symbols = do
+  let file = finnhubDataPrefix </> fileNameForDay day
+  csv <- B.readFile file
+  let rawQuoteEither = C.decodeByName csv
+  return $ bimap LocalIOError (map normalizeQuote . filter isRelevant . V.toList . snd) rawQuoteEither
+ where
+   isRelevant rawQuote = FinnhubLocal.symbol rawQuote `S.member` symbolSet
+   symbolSet = S.fromList symbols
+
+   normalizeQuote rawQuote =
+      Quote {
+        quoteTicker = FinnhubLocal.symbol rawQuote,
+        quoteTime   = dayToUTC day,
+        quoteValue  = fromMaybe (-1) $ close rawQuote <|> open rawQuote <|> high rawQuote <|> low rawQuote <|> bid rawQuote <|> ask rawQuote,
+        quoteApiId  = dataSourceID,
+        quoteRaw    = rawQuote
+      }
+
+   finnhubDataPrefix :: FilePath
+   finnhubDataPrefix = "data" </> "finnhub" </> "stock-eod-prices"
+
+   fileNameForDay :: Day -> FilePath
+   fileNameForDay day =
+     let (year, month, dayNum) = toGregorian day
+     in show year ++ showAtLeastTwoDigits month ++ showAtLeastTwoDigits dayNum ++ ".csv"
+
+   showAtLeastTwoDigits num
+     | num < 10 && num >= 0 = '0' : show num
+     | otherwise            = show num
+
+   dayToUTC :: Day -> UTCTime
+   dayToUTC day = UTCTime day 0

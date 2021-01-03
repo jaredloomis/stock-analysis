@@ -38,32 +38,32 @@ type FinnhubNumber = Double
 
 data FinnhubQuoteRaw = FinnhubQuoteRaw {
   -- | Current Value
-  c :: FinnhubNumber,
+  c :: !FinnhubNumber,
   -- | High of the day
-  h :: FinnhubNumber,
+  h :: !FinnhubNumber,
   -- | Low of the day
-  l :: FinnhubNumber,
+  l :: !FinnhubNumber,
   -- | Open Price
-  o :: FinnhubNumber,
+  o :: !FinnhubNumber,
   -- | Previous closing price
-  pc :: FinnhubNumber,
+  pc :: !FinnhubNumber,
   -- | UNIX timestamp
-  t :: Integer 
+  t :: !Integer 
 } deriving (Eq, Show, Generic, ToJSON, FromJSON)
 
 data FinnhubNewsSentimentRes = FinnhubNewsSentimentRes {
-  buzz :: FinnhubNewsSentimentBuzz,
-  sentiment :: FinnhubNewsSentimentSent,
-  companyNewsScore :: FinnhubNumber,
-  sectorAverageBullishPercent :: FinnhubNumber,
-  sectorAverageNewsScore :: FinnhubNumber,
-  symbol :: Text
+  buzz :: !FinnhubNewsSentimentBuzz,
+  sentiment :: !FinnhubNewsSentimentSent,
+  companyNewsScore :: !FinnhubNumber,
+  sectorAverageBullishPercent :: !FinnhubNumber,
+  sectorAverageNewsScore :: !FinnhubNumber,
+  symbol :: !Text
 } deriving (Eq, Show, Generic, ToJSON, FromJSON)
 
 data FinnhubNewsSentimentBuzz = FinnhubNewsSentimentBuzz {
-  articlesInLastWeek :: Integer,
-  buzzScore :: FinnhubNumber,
-  weeklyAverage :: FinnhubNumber
+  articlesInLastWeek :: !Integer,
+  buzzScore :: !FinnhubNumber,
+  weeklyAverage :: !FinnhubNumber
 } deriving (Eq, Show, Generic)
 
 instance ToJSON FinnhubNewsSentimentBuzz where

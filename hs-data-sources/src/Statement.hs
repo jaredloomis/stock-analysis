@@ -11,16 +11,16 @@ import Data.Aeson
 
 data FundamentalsStatement a = FundamentalsStatement {
   -- Basic info
-  stmtTicker :: Text,
-  stmtPeriod :: (Day, Day),
+  stmtTicker :: !Text,
+  stmtPeriod :: !(Day, Day),
   -- Fundamentals
-  stmtNetProfit :: Maybe Float,
-  stmtShareholdersEquity :: Maybe Float,
+  stmtNetProfit :: !(Maybe Float),
+  stmtShareholdersEquity :: !(Maybe Float),
   -- Metadata regarding the data source
-  stmtPublishDate :: Day,
+  stmtPublishDate :: !Day,
   -- | The date this FundamentalsStatement was created.
-  stmtFetchDate :: Day,
-  stmtSource :: Text,
-  stmtApiId :: Text,
-  stmtRaw :: a
+  stmtFetchDate :: !Day,
+  stmtSource :: !Text,
+  stmtApiId :: !Text,
+  stmtRaw :: !a
 } deriving (Eq, Show, Generic, ToJSON, FromJSON)

@@ -1,3 +1,7 @@
+/**
+ * This module provides the ability to load data from a variety of sources, in a variety of format, and
+ * to transform it into custom user-defined JSON formats.
+ */
 import util from "util";
 import neatCsv from "neat-csv";
 import { spawn } from "child_process";
@@ -29,7 +33,7 @@ export default async function transformData(source: DataSource | string, jqExpre
   // Spawn jq
   const child = spawn("jq", [jqExpression]);
 
-  // Watch stderr
+  // Clone stderr
   child.stderr.pipe(process.stderr);
 
   // Send source contents to input
@@ -52,12 +56,11 @@ async function loadSource(source: DataSource): Promise<object> {
   const anySource = source as any;
   if(anySource.filePath) {
     const path = anySource.filePath
+    const text = await readFileAsync(path, { encoding: "utf8" });
     if(path.endsWith(".json")) {
-      const json = await readFileAsync(path, { encoding: "utf8" });
-      return JSON.parse(json);
+      return JSON.parse(text);
     } else if(path.endsWith(".csv")) {
-      const csv = await readFileAsync(path, { encoding: "utf8" });
-      return neatCsv(csv);
+      return neatCsv(text);
     }
   } else if(anySource.string) {
     if(isJSON(anySource.string)) {
