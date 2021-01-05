@@ -4,7 +4,11 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.time.Instant
+import java.util.stream.Collectors
+import java.util.stream.Stream
 import kotlin.math.ceil
+import kotlin.streams.asStream
+import kotlin.streams.toList
 
 /**
  * A plan to fetch a sample or set of samples
@@ -40,38 +44,48 @@ data class IndicatorSampleFetchPlan(val query: IndicatorQuery, val indicator: In
 data class IndicatorScheduler(val groups: List<IndicatorGroupSpec>) {
   private val logger: Logger = LoggerFactory.getLogger(javaClass)
 
-  fun createFetchPlan(queries: Sequence<IndicatorQuery>, batchSize: Int?): List<IndicatorSampleFetchPlan> {
-    val samples = mutableListOf<Pair<IndicatorQuery, Instant>>()
-
-    for(query in queries) {
-      for(timerange in query.getSchedule().ranges()) {
-        val startTime = timerange.first.toInstant()
-        val endTime   = timerange.second.toInstant()
-        val duration  = Duration.between(startTime, endTime)
-        val sampleRate = query.getSampleRate()
-        val sampleCount = duration.toMillis() / sampleRate.toMillis()
-
-        for(sampleI in 0..sampleCount) {
-          val sampleTime = startTime.plus(sampleRate.multipliedBy(sampleI))
-          if(sampleTime < endTime) {
-            samples.add(Pair(query, sampleTime))
-          }
+  fun createFetchPlan(queries: Sequence<IndicatorQuery>, batchSize: Int=Int.MAX_VALUE): List<IndicatorSampleFetchPlan> {
+    return queries.asStream()
+      .flatMap { query ->
+        // Split samples apart according to batchSize
+        if(query.tickers.size > batchSize) {
+          query.tickers.chunked(batchSize)
+            .stream()
+            .map { query.withTickers(it) }
+        } else {
+          Stream.of(query)
         }
       }
-    }
+      .flatMap { query ->
+        // For each query, create enough samples to cover the requested timerange
+        query.getSchedule().ranges().stream()
+          .flatMap { timerange ->
+            val startTime = timerange.first.toInstant()
+            val endTime   = timerange.second.toInstant()
+            val duration  = Duration.between(startTime, endTime)
+            val sampleRate = query.getSampleRate()
+            val sampleCount = duration.toMillis() / sampleRate.toMillis()
 
-    return samples
-      .mapNotNull { sample ->
-        val indicators = getAvailableAt(sample.first.indicatorID, sample.second)
+            Stream.iterate(0L, { i -> i+1 }).limit(sampleCount)
+              .map { sampleI ->
+                val sampleTime = startTime.plus(sampleRate.multipliedBy(sampleI))
+                Pair(query, sampleTime)
+              }
+          }
+      }
+      .map { queryInstant ->
+        val indicators = getAvailableAt(queryInstant.first.indicatorID, queryInstant.second)
         if(indicators.isEmpty()) {
-          logger.error("No data sources available to fetch sample: $sample")
+          logger.error("No data sources available to fetch sample: $queryInstant")
           null
         } else {
           val indicator = indicators[0]
-          IndicatorSampleFetchPlan(sample.first, indicator, mapOf(Pair("time", sample.second.toString())))
+          IndicatorSampleFetchPlan(queryInstant.first, indicator, mapOf(Pair("time", queryInstant.second.toString())))
         }
       }
-      .toList()
+      .filter { it != null }
+      .map { it!! }
+      .collect(Collectors.toList())
   }
 
   private fun getAvailableAt(indicatorID: String, timestamp: Instant): List<IndicatorSpec> {

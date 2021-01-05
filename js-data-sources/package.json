@@ -14,6 +14,7 @@
     "@types/yargs": "^15.0.12",
     "axios": "^0.21.1",
     "crawler": "^1.2.2",
+    "csv-parser": "^3.0.0",
     "neat-csv": "^6.0.0",
     "yargs": "^16.2.0"
   },

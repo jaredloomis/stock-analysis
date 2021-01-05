@@ -9,6 +9,7 @@ import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.file
 import com.github.ajalt.clikt.parameters.types.int
 import org.kodein.di.instance
+import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.io.File
 import java.nio.file.Files
@@ -29,12 +30,13 @@ class CLIRunner : CliktCommand() {
     .file(mustBeReadable = true)
     .required()
   // TODO make functional again
-  private val batchSize: Int? by option(help = "# of tickers per data source query")
+  private val batchSize: Int by option(help = "# of tickers per data source query")
     .int()
+    .default(Int.MAX_VALUE)
   private val concurrentQueries: Int by option(help = "# of data source queries to execute at the same time")
     .int()
     .default(6)
-  private val interactive: Boolean by option(help = "Interactive mode")
+  private val plan: Boolean by option(help = "No-op - print out planned queries")
     .flag(default = false)
 
   private val mapper by di.instance<ObjectMapper>()
@@ -63,17 +65,10 @@ class CLIRunner : CliktCommand() {
     // Create query plan
     val fetchPlans = getScheduler().createFetchPlan(queryConfig.queries.asSequence(), batchSize=batchSize)
 
-    // Confirm plan with user
-    log.info("Here's the plan:")
-    fetchPlans.forEach { log.info(it.toString()) }
-    // Allow cancellation in interactive mode
-    if(interactive) {
-      log.info("Continue? (y/n)")
-      with(Scanner(System.`in`)) {
-        if (hasNextLine() && nextLine() != "y") {
-          exitProcess(0)
-        }
-      }
+    // If --plan flag is present, print plan and exit
+    if(plan) {
+      fetchPlans.forEach { log.info(it.toString()) }
+      exitProcess(0)
     }
 
     // Execute queries

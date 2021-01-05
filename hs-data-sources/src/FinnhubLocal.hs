@@ -22,6 +22,7 @@ import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Data.Time (UTCTime(..), Day, getCurrentTime, utctDay, toGregorian)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import System.FilePath.Posix ((</>))
+import Control.Parallel.Strategies (parListChunk, rseq, withStrategy)
 
 import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString.Internal as BI
@@ -107,6 +108,7 @@ instance C.FromNamedRecord FinnhubQuoteRaw where
 -- | 'Greedy' indicates that this function *returns unrelated quotes along with the requested quote*.
 --   The line of thinking is: if we're already opening the file and parsing it, we might as well return the
 --   parsed quotes.
+--   @deprecated - see quoteMany
 quoteGreedy :: Day -> Text -> IO (Either StockError [Quote FinnhubQuoteRaw])
 quoteGreedy day symbol = do
   let file = finnhubDataPrefix </> fileNameForDay day
@@ -138,6 +140,7 @@ quoteGreedy day symbol = do
    dayToUTC :: Day -> UTCTime
    dayToUTC day = UTCTime day 0
 
+-- | @deprecated - see quoteMany
 quote :: Day -> Text -> IO (Either StockError (Quote FinnhubQuoteRaw, [Quote FinnhubQuoteRaw]))
 quote day symbol = do
   quotes <- quoteGreedy day symbol
@@ -152,10 +155,11 @@ quote day symbol = do
 
 quoteMany :: Day -> [Text] -> IO (Either StockError [Quote FinnhubQuoteRaw])
 quoteMany day symbols = do
-  let file = finnhubDataPrefix </> fileNameForDay day
+  let file = finnhubDataPrefix </> fileNameForDay
   csv <- B.readFile file
   let rawQuoteEither = C.decodeByName csv
-  return $ bimap LocalIOError (map normalizeQuote . filter isRelevant . V.toList . snd) rawQuoteEither
+  let strat = parListChunk 25 rseq
+  return $ bimap LocalIOError (withStrategy strat . map normalizeQuote . filter isRelevant . V.toList . snd) rawQuoteEither
  where
    isRelevant rawQuote = FinnhubLocal.symbol rawQuote `S.member` symbolSet
    symbolSet = S.fromList symbols
@@ -172,8 +176,8 @@ quoteMany day symbols = do
    finnhubDataPrefix :: FilePath
    finnhubDataPrefix = "data" </> "finnhub" </> "stock-eod-prices"
 
-   fileNameForDay :: Day -> FilePath
-   fileNameForDay day =
+   fileNameForDay :: FilePath
+   fileNameForDay =
      let (year, month, dayNum) = toGregorian day
      in show year ++ showAtLeastTwoDigits month ++ showAtLeastTwoDigits dayNum ++ ".csv"
 

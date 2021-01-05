@@ -19,7 +19,7 @@ switch(command) {
     fetchYahooQuote(args.tickers.flatMap(ticker => ticker.split(',')));
     break;
   case "transform":
-    transform(args.source, args.jqExpression).then(console.log);
+    transform(args.source, args.jqExpression).then(out => console.log(JSON.stringify(out)));
     break;
   default:
     console.error(`Unrecognized command: ${command}`);

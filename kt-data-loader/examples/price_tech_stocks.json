@@ -3,7 +3,7 @@
     {
       "indicator": "price",
       "arguments": {
-        "tickers": ["AAPL"]
+        "tickers": ["AAPL", "AMD", "MSFT"]
       },
       "schedule": ["1992-07-15", "1992-07-20"]
     }

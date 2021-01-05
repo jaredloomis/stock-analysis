@@ -49,6 +49,7 @@ library
     , filepath
     , http-client
     , http-client-tls
+    , parallel
     , servant >=0.16
     , servant-client >=0.16
     , text >=1.2.3.0 && <1.3

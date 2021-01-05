@@ -2,8 +2,10 @@
  * This module provides the ability to load data from a variety of sources, in a variety of format, and
  * to transform it into custom user-defined JSON formats.
  */
+import fs from "fs";
 import util from "util";
 import neatCsv from "neat-csv";
+import csv from "csv-parser";
 import { spawn } from "child_process";
 import { readFile, PathLike } from "fs";
 import axios from "axios";
@@ -56,11 +58,19 @@ async function loadSource(source: DataSource): Promise<object> {
   const anySource = source as any;
   if(anySource.filePath) {
     const path = anySource.filePath
-    const text = await readFileAsync(path, { encoding: "utf8" });
     if(path.endsWith(".json")) {
+      const text = await readFileAsync(path, { encoding: "utf8" });
       return JSON.parse(text);
     } else if(path.endsWith(".csv")) {
-      return neatCsv(text);
+      return new Promise((resolve, reject) => {
+        const results: any[] = [];
+        fs.createReadStream(path)
+          .pipe(csv())
+          .on("data", data => results.push(data))
+          .on("end", () => resolve(results))
+          .on("error", reject);
+      });
+      //return neatCsv(text);
     }
   } else if(anySource.string) {
     if(isJSON(anySource.string)) {

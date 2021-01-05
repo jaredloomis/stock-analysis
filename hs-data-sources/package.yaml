@@ -36,6 +36,7 @@ library:
   - cassava
   - containers
   - filepath
+  - parallel
 
 executables:
   data-fetcher-hs-exe:

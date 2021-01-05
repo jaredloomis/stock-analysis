@@ -5,7 +5,7 @@
       "arguments": {
         "tickers": ["*"]
       },
-      "schedule": ["1992-08-17", "now"]
+      "schedule": ["1999-03-15", "now"]
     }
   ]
 }

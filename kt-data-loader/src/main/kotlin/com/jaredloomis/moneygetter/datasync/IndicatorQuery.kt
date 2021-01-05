@@ -3,6 +3,7 @@ package com.jaredloomis.moneygetter.datasync
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.kodein.di.instance
+import org.kodein.di.named
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.time.Duration
@@ -17,12 +18,7 @@ data class IndicatorQuery(
   @JsonProperty("schedule")   val scheduleRaw: List<String>? = listOf("now", "now"),
   @JsonProperty("sampleRate") val sampleRate: Long? = 86400000
 ) {
-  private val mapper by di.instance<ObjectMapper>()
-
-  val stringArguments: Map<String, String>
-    get() = arguments
-      .filter    { it.value is String }
-      .mapValues { it.value as String }
+  private val sp500 by di.instance<List<Stock>>("stocks.sp500")
 
   var tickers: List<String>
     get()     = arguments.getOrDefault("tickers", emptyList<String>()) as List<String>
@@ -34,24 +30,9 @@ data class IndicatorQuery(
     tickers = if(all) {
       tickers
         .filter { it == "*" }
-        .plus(listAllTickers().map { it.first })
+        .plus(getStarTickers().map { it.ticker })
     } else {
       tickers
-    }
-  }
-
-  /**
-   * Splits query into batches based on number of tickers.
-   */
-  fun batches(batchSize: Int): List<IndicatorQuery> {
-    return if(tickers.isNotEmpty() && batchSize != 0) {
-      tickers.chunked(batchSize).map { chunk ->
-        val args = HashMap(arguments)
-        args["tickers"] = chunk
-        IndicatorQuery(indicatorID, args)
-      }
-    } else {
-      listOf(this)
     }
   }
 
@@ -72,16 +53,22 @@ data class IndicatorQuery(
     }
   }
 
+  fun withTickers(tickers: List<String>): IndicatorQuery {
+    val ret = clone()
+    ret.tickers = tickers
+    return ret
+  }
+
+  fun clone(): IndicatorQuery {
+    return IndicatorQuery(indicatorID, HashMap(arguments), scheduleRaw, sampleRate)
+  }
+
   operator fun get(s: String): Any? {
     return arguments[s]
   }
 
-  private fun listAllTickers(): List<Pair<String, String>> {
-    val jsonText = Files.readString(Paths.get("../data/stock_list_nyse.json"))
-    val jsonNode = mapper.readTree(jsonText)
-    return jsonNode.asIterable()
-      .map { Pair(it["ACT Symbol"].asText(), it["Company Name"].asText()) }
-      .toList()
+  private fun getStarTickers(): List<Stock> {
+    return sp500
   }
 }
 
