@@ -8,6 +8,10 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.file
 import com.github.ajalt.clikt.parameters.types.int
+import org.apache.log4j.AppenderSkeleton
+import org.apache.log4j.FileAppender
+import org.apache.log4j.Level
+import org.apache.log4j.PatternLayout
 import org.kodein.di.instance
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -36,7 +40,9 @@ class CLIRunner : CliktCommand() {
   private val concurrentQueries: Int by option(help = "# of data source queries to execute at the same time")
     .int()
     .default(6)
-  private val plan: Boolean by option(help = "No-op - print out planned queries")
+  private val plan: Boolean by option(help = "Don't fetch any data - just print out planned queries")
+    .flag(default = false)
+  private val noLog: Boolean by option(help = "Don't print out logs - just return the result")
     .flag(default = false)
 
   private val mapper by di.instance<ObjectMapper>()
@@ -59,13 +65,20 @@ class CLIRunner : CliktCommand() {
       executor.awaitTermination(10, TimeUnit.SECONDS)
     })
 
+    if(noLog) {
+      val logger4j = org.apache.log4j.Logger.getRootLogger()
+      logger4j.level = Level.toLevel("ERROR")
+      logger4j.removeAllAppenders()
+      logger4j.addAppender(FileAppender(PatternLayout(), "kt-data-loader.log"))
+    }
+
     val queryConfig = loadQueryConfig()
     log.debug("Running With Config $queryConfigFile:\n$queryConfig")
 
     // Create query plan
     val fetchPlans = getScheduler().createFetchPlan(queryConfig.queries.asSequence(), batchSize=batchSize)
 
-    // If --plan flag is present, print plan and exit
+    // If `--plan` flag is present, print plan and exit
     if(plan) {
       fetchPlans.forEach { log.info(it.toString()) }
       exitProcess(0)
@@ -76,15 +89,22 @@ class CLIRunner : CliktCommand() {
       val processBuilder = ProcessBuilder(fetchPlan.getCommand())
         .directory(Paths.get("..").toFile())
         .redirectOutput(ProcessBuilder.Redirect.PIPE)
-        .redirectError(ProcessBuilder.Redirect.to(Paths.get("data-source.error.log").toFile()))
+        .redirectError(ProcessBuilder.Redirect.PIPE) //ProcessBuilder.Redirect.to(Paths.get("data-source.error.log").toFile()))
+
       executor.execute {
         log.info("Starting Process ${processBuilder.command()}")
+        // Execute data source
         val proc = processBuilder.start()
+        // Process stdout lines as JSON
         proc.inputStream.bufferedReader().lines().forEach { output ->
           val outputTeaser = output.substring(0, min(output.length, 250)) + " ..."
           log.info("Received output from ${processBuilder.command()}: $outputTeaser")
           log.debug("Output: $output")
           processOutputLine(fetchPlan.indicator.name, output)
+        }
+        // Print stderr lines as warnings
+        proc.errorStream.bufferedReader().lines().forEach { err ->
+          log.warn("from stderr of data source process ${processBuilder.command()}: $err")
         }
         proc.onExit().join()
       }
@@ -136,7 +156,7 @@ class CLIRunner : CliktCommand() {
 
       return samples
     } catch(ex: Exception) {
-      log.error("Couldn't process output line of $indicatorID: $line\n$ex")
+      log.warn("Couldn't process output line of $indicatorID: $line\n$ex")
       throw ex
     }
   }
