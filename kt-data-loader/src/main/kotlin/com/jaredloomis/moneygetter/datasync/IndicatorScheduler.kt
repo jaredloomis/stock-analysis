@@ -41,6 +41,12 @@ data class IndicatorSampleFetchPlan(val query: IndicatorQuery, val indicator: In
   }
 }
 
+data class IndicatorSampleFetchPlanONE(
+  val indicatorID: String, val stockID: String, val time: Instant?, val args: Map<String, String>
+) {
+
+}
+
 data class IndicatorScheduler(val groups: List<IndicatorGroupSpec>) {
   private val logger: Logger = LoggerFactory.getLogger(javaClass)
 

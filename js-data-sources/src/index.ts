@@ -1,10 +1,13 @@
-import fetchYahooQuote from "./fetch-yahoo-quote";
-import transform       from "./transformer";
-import joinOn          from "./joiner";
+import fetchYahooQuote    from "./fetch-yahoo-quote";
+import transform          from "./transformer";
+import joinOn             from "./joiner";
+import fetchInsiderTrades from "./fetch-insider-trades-openinsider";
 const yargs = require('yargs');
 
 const args = yargs
   .command('fetch-quote <tickers...>', 'Fetch a quote for each ticker')
+    .string("tickers")
+  .command('fetch-insider', 'Fetch insider trades')
     .string("tickers")
   .command('transform <source> <jqExpression>', 'Fetch data from a source, and transform it using jq')
     .string("source")
@@ -22,6 +25,9 @@ const command = args._[0];
 switch(command) {
   case "fetch-quote":
     fetchYahooQuote(args.tickers.flatMap(ticker => ticker.split(',')));
+    break;
+  case "fetch-insider-trades":
+    fetchInsiderTrades();
     break;
   case "transform":
     transform(args.source, args.jqExpression).then(out => console.log(JSON.stringify(out)));

@@ -33,7 +33,6 @@ class CLIRunner : CliktCommand() {
   private val queryConfigFile: File by option(help = "Path to query config file")
     .file(mustBeReadable = true)
     .required()
-  // TODO make functional again
   private val batchSize: Int by option(help = "# of tickers per data source query")
     .int()
     .default(Int.MAX_VALUE)
@@ -42,7 +41,7 @@ class CLIRunner : CliktCommand() {
     .default(6)
   private val plan: Boolean by option(help = "Don't fetch any data - just print out planned queries")
     .flag(default = false)
-  private val noLog: Boolean by option(help = "Don't print out logs - just return the result")
+  private val noLog: Boolean by option(help = "Don't print out logs - just return the result. Logs are saved to a file instead")
     .flag(default = false)
 
   private val mapper by di.instance<ObjectMapper>()
@@ -65,6 +64,7 @@ class CLIRunner : CliktCommand() {
       executor.awaitTermination(10, TimeUnit.SECONDS)
     })
 
+    // Disable logging if requested
     if(noLog) {
       val logger4j = org.apache.log4j.Logger.getRootLogger()
       logger4j.level = Level.toLevel("ERROR")
@@ -89,7 +89,7 @@ class CLIRunner : CliktCommand() {
       val processBuilder = ProcessBuilder(fetchPlan.getCommand())
         .directory(Paths.get("..").toFile())
         .redirectOutput(ProcessBuilder.Redirect.PIPE)
-        .redirectError(ProcessBuilder.Redirect.PIPE) //ProcessBuilder.Redirect.to(Paths.get("data-source.error.log").toFile()))
+        .redirectError(ProcessBuilder.Redirect.PIPE)
 
       executor.execute {
         log.info("Starting Process ${processBuilder.command()}")
@@ -152,6 +152,11 @@ class CLIRunner : CliktCommand() {
           sample.indicator_value,
           sample.indicator_raw
         )
+
+        // If in noLog mode, print out sample directly
+        if(noLog) {
+          mapper.writeValue(System.out, sample)
+        }
       }
 
       return samples
