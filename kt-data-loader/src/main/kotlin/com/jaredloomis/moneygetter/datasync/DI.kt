@@ -11,6 +11,7 @@ import java.time.format.DateTimeFormatter
 val di = DI {
   import(configPropertiesModule)
   import(postgresModule)
+  import(indicatorCacheModule)
 
   val mapper = ObjectMapper()
 

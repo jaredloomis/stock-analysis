@@ -5,7 +5,7 @@
       "arguments": {
         "tickers": ["AAPL", "AMD", "MSFT"]
       },
-      "schedule": ["1992-07-15", "1992-07-20"]
+      "schedule": ["1992-07-20", "1992-07-21"]
     }
   ]
 }

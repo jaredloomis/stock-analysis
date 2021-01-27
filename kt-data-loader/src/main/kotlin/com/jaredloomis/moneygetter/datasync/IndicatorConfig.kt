@@ -178,25 +178,16 @@ class IndicatorConfig(val configString: String) {
       }
   }
 
-  fun getFetchCommand(query: IndicatorQuery): String {
+  fun getFetchCommandTemplate(indicatorID: String): String {
     // Select first fetcher for specified indicator in the config file
-    val fetchers = getFetchers(query)
+    val fetchers = getFetchers(indicatorID)
     val fetcher = fetchers.next()
-    log.debug("Fetcher for query ${query}:\n${fetcher}")
-
-    // Instantiate $variables from query arguments into command string
-    val cmdTemplate = fetcher["command"].asText()
-    return query.arguments.entries.fold(cmdTemplate) { acc, arg ->
-      if(arg.key == "tickers") {
-        acc.replace("\$${arg.key}", showTickers(arg.value as List<String>))
-      } else {
-        acc.replace("\$${arg.key}", arg.value.toString())
-      }
-    }
+    log.debug("Fetcher for ${indicatorID}:\n${fetcher}")
+    return fetcher["command"].asText()
   }
 
-  fun getFetchers(query: IndicatorQuery): Iterator<JsonNode> {
-    return json[query.indicatorID].elements().asSequence()
+  fun getFetchers(indicatorID: String): Iterator<JsonNode> {
+    return json[indicatorID].elements().asSequence()
       .filter { it.isObject && it.has("command") }
       .iterator()
   }

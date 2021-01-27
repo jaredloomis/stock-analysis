@@ -47,6 +47,7 @@ class CLIRunner : CliktCommand() {
   private val mapper by di.instance<ObjectMapper>()
   private val props by di.instance<Properties>()
   private val db by di.instance<StockDatabase>()
+  private val indicatorCache by di.instance<IndicatorCache>()
 
   // NOTE: Must be updated every time a new indicator class is added
   private val INDICATOR_MODEL_CLASSES = emptyMap<String, Class<IsIndicatorSample>>()
@@ -76,9 +77,9 @@ class CLIRunner : CliktCommand() {
     log.debug("Running With Config $queryConfigFile:\n$queryConfig")
 
     // Create query plan
-    val fetchPlans = getScheduler().createFetchPlan(queryConfig.queries.asSequence(), batchSize=batchSize)
+    val fetchPlans = getScheduler().createFetchPlanONE(queryConfig.queries.asSequence(), batchSize=batchSize)
 
-    // If `--plan` flag is present, print plan and exit
+    // If `--plan` flag is present, print plan and exits
     if(plan) {
       fetchPlans.forEach { log.info(it.toString()) }
       exitProcess(0)
@@ -86,12 +87,24 @@ class CLIRunner : CliktCommand() {
 
     // Execute queries
     fetchPlans.forEach { fetchPlan ->
-      val processBuilder = ProcessBuilder(fetchPlan.getCommand())
-        .directory(Paths.get("..").toFile())
-        .redirectOutput(ProcessBuilder.Redirect.PIPE)
-        .redirectError(ProcessBuilder.Redirect.PIPE)
-
       executor.execute {
+        // Save some work by checking the DB for pre-existing samples
+        val cachedResults = indicatorCache.fetchAllIfPossible(fetchPlan)
+        processSamples(cachedResults.first, insertInDB=false)
+        val simplifiedFetchPlan = cachedResults.second
+        // Log cache hits
+        val cacheCount = fetchPlan.argsList.size - simplifiedFetchPlan.argsList.size
+        if(cacheCount > 0) {
+          log.info("Fetched $cacheCount/${fetchPlan.argsList.size} samples from cache")
+        }
+
+        // Create data source command string
+        val commandTemplate = getIndicatorConfig().getFetchCommandTemplate(simplifiedFetchPlan.indicatorID)
+        val processBuilder = ProcessBuilder(simplifiedFetchPlan.getCommand(commandTemplate))
+          .directory(Paths.get("..").toFile())
+          .redirectOutput(ProcessBuilder.Redirect.PIPE)
+          .redirectError(ProcessBuilder.Redirect.PIPE)
+
         log.info("Starting Process ${processBuilder.command()}")
         // Execute data source
         val proc = processBuilder.start()
@@ -99,8 +112,8 @@ class CLIRunner : CliktCommand() {
         proc.inputStream.bufferedReader().lines().forEach { output ->
           val outputTeaser = output.substring(0, min(output.length, 250)) + " ..."
           log.info("Received output from ${processBuilder.command()}: $outputTeaser")
-          log.debug("Output: $output")
-          processOutputLine(fetchPlan.indicator.name, output)
+          log.debug("Full output from ${processBuilder.command()}: $output")
+          processOutputLine(simplifiedFetchPlan.indicatorID, output)
         }
         // Print stderr lines as warnings
         proc.errorStream.bufferedReader().lines().forEach { err ->
@@ -138,26 +151,8 @@ class CLIRunner : CliktCommand() {
       // Create an indicator sample
       val samples = rawSamples.map { it.asSample() }
 
-      // Insert sample into the DB
-      samples.forEach { sample ->
-        log.info("Inserting sample $sample")
-        db.indicatorSampleQueries.insert(
-          sample.sample_id,
-          sample.stock_id,
-          sample.indicator_id,
-          sample.fetch_source_id,
-          sample.start_time,
-          sample.end_time,
-          sample.fetch_time,
-          sample.indicator_value,
-          sample.indicator_raw
-        )
-
-        // If in noLog mode, print out sample directly
-        if(noLog) {
-          mapper.writeValue(System.out, sample)
-        }
-      }
+      // Process samples
+      processSamples(samples)
 
       return samples
     } catch(ex: Exception) {
@@ -166,8 +161,40 @@ class CLIRunner : CliktCommand() {
     }
   }
 
+  private fun processSamples(samples: List<IndicatorSample>, insertInDB: Boolean=true) {
+    log.info("Inserting ${samples.size} samples: $samples")
+    if(noLog) {
+      val sampleStr = mapper.writeValueAsString(samples)
+      println(sampleStr)
+    }
+
+    if(insertInDB) {
+      samples.forEach { sample ->
+        try {
+          db.indicatorSampleQueries.insert(
+            sample.sample_id,
+            sample.stock_id,
+            sample.indicator_id,
+            sample.fetch_source_id,
+            sample.start_time,
+            sample.end_time,
+            sample.fetch_time,
+            sample.indicator_value,
+            sample.indicator_raw
+          )
+        } catch (ex: Exception) {
+          if (noLog) {
+            ex.printStackTrace(System.err)
+          } else {
+            log.error(ex.toString())
+          }
+        }
+      }
+    }
+  }
+
   private fun createExecutorService(): ExecutorService {
-    return ThreadPoolExecutor(1, concurrentQueries, 30L, TimeUnit.MINUTES, LinkedBlockingQueue<Runnable>())
+    return ThreadPoolExecutor(1, concurrentQueries, 30L, TimeUnit.MINUTES, LinkedBlockingQueue())
   }
 
   private fun loadQueryConfig(): IndicatorQueryConfig {

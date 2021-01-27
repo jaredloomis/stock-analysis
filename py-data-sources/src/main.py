@@ -1,4 +1,5 @@
 import os
+import json
 import argparse
 from secedgar.filings import Filing, FilingType
 from parse_xbrl import parse_xbrl
@@ -18,4 +19,4 @@ for ticker in args.tickers:
     for file_name in os.listdir(report_dir):
         if file_name.endswith(".txt"):
             file_path = report_dir + "/" + file_name
-            print(parse_xbrl(file_path))
+            print(json.dumps(parse_xbrl(file_path)))

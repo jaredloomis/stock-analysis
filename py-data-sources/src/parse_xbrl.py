@@ -1,10 +1,14 @@
-import json
+import sys
 from xml.etree import ElementTree
 
 
 def parse_xbrl(file_path, form_id="4"):
   if form_id == "4":
-    return json.dumps(parse_xbrl_form4(file_path))
+    ret = parse_xbrl_form4(file_path)
+    if ret is not None:
+        return ret
+    else:
+        return []
 
 
 def parse_xbrl_form4(file_path):
@@ -12,7 +16,11 @@ def parse_xbrl_form4(file_path):
     text = file.read()
 
   xml = strip_non_xml(text)
-  tree = ElementTree.fromstring(xml)
+  try:
+    tree = ElementTree.fromstring(xml)
+  except:
+      print("ERROR DUE TO STRIPPED XML for " + file_path + ": " + xml + "\nORIGINAL XML: " + text, file=sys.stderr)
+      return
 
   transactions = []
 
