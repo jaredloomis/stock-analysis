@@ -1,0 +1,106 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.34.2.
+--
+-- see: https://github.com/sol/hpack
+
+name:           stock-analysis-simulator
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/jaredloomis/stonks#readme>
+homepage:       https://github.com/githubuser/stock-analysis-simulator#readme
+bug-reports:    https://github.com/githubuser/stock-analysis-simulator/issues
+author:         Jared Loomis
+maintainer:     jaredloomis@protonmail.com
+copyright:      2021 Jared Loomis
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    ChangeLog.md
+
+source-repository head
+  type: git
+  location: https://github.com/githubuser/stock-analysis-simulator
+
+library
+  exposed-modules:
+      DataLoader
+      IndicatorArgs
+      IndicatorSample
+      Lib
+      Strategies.Momentum
+      Strategy
+      Summary
+      Time
+  other-modules:
+      Paths_stock_analysis_simulator
+  hs-source-dirs:
+      src
+  default-extensions: GADTs DeriveFunctor OverloadedStrings DeriveGeneric NoImplicitPrelude BangPatterns MultiParamTypeClasses FunctionalDependencies FlexibleInstances FlexibleContexts DeriveAnyClass
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , dlist
+    , free
+    , hashable
+    , process
+    , rio
+    , text
+    , time
+    , unordered-containers
+    , vector
+  default-language: Haskell2010
+
+executable stock-analysis-simulator-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_stock_analysis_simulator
+  hs-source-dirs:
+      app
+  default-extensions: GADTs DeriveFunctor OverloadedStrings DeriveGeneric NoImplicitPrelude BangPatterns MultiParamTypeClasses FunctionalDependencies FlexibleInstances FlexibleContexts DeriveAnyClass
+  ghc-options: -O2 -threaded -rtsopts -with-rtsopts=-N -Wall
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , dlist
+    , free
+    , hashable
+    , process
+    , rio
+    , stock-analysis-simulator
+    , text
+    , time
+    , unordered-containers
+    , vector
+  default-language: Haskell2010
+
+test-suite stock-analysis-simulator-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_stock_analysis_simulator
+  hs-source-dirs:
+      test
+  default-extensions: GADTs DeriveFunctor OverloadedStrings DeriveGeneric NoImplicitPrelude BangPatterns MultiParamTypeClasses FunctionalDependencies FlexibleInstances FlexibleContexts DeriveAnyClass
+  ghc-options: -O2 -threaded -rtsopts -with-rtsopts=-N -Wall
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , dlist
+    , free
+    , hashable
+    , process
+    , rio
+    , stock-analysis-simulator
+    , text
+    , time
+    , unordered-containers
+    , vector
+  default-language: Haskell2010

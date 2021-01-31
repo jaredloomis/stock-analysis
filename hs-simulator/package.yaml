@@ -1,0 +1,69 @@
+name:                stock-analysis-simulator
+version:             0.1.0.0
+github:              "githubuser/stock-analysis-simulator"
+license:             BSD3
+author:              "Jared Loomis"
+maintainer:          "jaredloomis@protonmail.com"
+copyright:           "2021 Jared Loomis"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+description:         Please see the README on GitHub at <https://github.com/jaredloomis/stonks#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+- text
+- containers
+- free
+- time
+- vector
+- process
+- aeson
+- bytestring
+- rio
+- dlist
+- unordered-containers
+- hashable
+
+default-extensions:
+- GADTs
+- DeriveFunctor
+- OverloadedStrings
+- DeriveGeneric
+- NoImplicitPrelude
+- BangPatterns
+- MultiParamTypeClasses
+- FunctionalDependencies
+- FlexibleInstances
+- FlexibleContexts
+- DeriveAnyClass
+
+library:
+  source-dirs: src
+
+executables:
+  stock-analysis-simulator-exe:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -O2
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -Wall
+    dependencies:
+    - stock-analysis-simulator
+
+tests:
+  stock-analysis-simulator-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -O2
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -Wall
+    dependencies:
+    - stock-analysis-simulator

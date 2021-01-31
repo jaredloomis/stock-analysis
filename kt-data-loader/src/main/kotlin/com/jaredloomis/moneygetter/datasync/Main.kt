@@ -8,12 +8,10 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.file
 import com.github.ajalt.clikt.parameters.types.int
-import org.apache.log4j.AppenderSkeleton
 import org.apache.log4j.FileAppender
 import org.apache.log4j.Level
 import org.apache.log4j.PatternLayout
 import org.kodein.di.instance
-import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.io.File
 import java.nio.file.Files
@@ -42,6 +40,8 @@ class CLIRunner : CliktCommand() {
   private val plan: Boolean by option(help = "Don't fetch any data - just print out planned queries")
     .flag(default = false)
   private val noLog: Boolean by option(help = "Don't print out logs - just return the result. Logs are saved to a file instead")
+    .flag(default = false)
+  private val groupedResults: Boolean by option(help = "Group samples by the query that requested it. Only works when --no-log")
     .flag(default = false)
 
   private val mapper by di.instance<ObjectMapper>()
@@ -77,7 +77,8 @@ class CLIRunner : CliktCommand() {
     log.debug("Running With Config $queryConfigFile:\n$queryConfig")
 
     // Create query plan
-    val fetchPlans = getScheduler().createFetchPlanONE(queryConfig.queries.asSequence(), batchSize=batchSize)
+    val fetchPlans = getScheduler().createFetchPlan(queryConfig.queries.asSequence(), batchSize=batchSize)
+    log.info("Planning ${fetchPlans.size} fetches")
 
     // If `--plan` flag is present, print plan and exits
     if(plan) {

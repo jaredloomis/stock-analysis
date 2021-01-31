@@ -129,13 +129,9 @@ sealed class IndicatorTime: Comparable<IndicatorTime> {
         try {
           return Timestamp(LocalDate.parse(str).atStartOfDay(ZoneId.systemDefault()).toInstant())
         } catch (ex: java.lang.Exception) {
-          ex.printStackTrace()
-
           try {
             return Timestamp(ZonedDateTime.parse(str).toInstant())
           } catch (ex: Exception) {
-            ex.printStackTrace()
-
             try {
               Timestamp(DateTimeFormatter.ISO_DATE_TIME.parse(str, TemporalQuery<Instant> { temporal: TemporalAccessor? -> Instant.from(temporal) }) as Instant)
             } catch (ex: Exception) {
