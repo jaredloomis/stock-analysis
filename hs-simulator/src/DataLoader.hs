@@ -233,7 +233,7 @@ withSingleQueryConfig indicatorID (IndicatorArgs schedule args) f = do
 executeDataLoader :: FilePath -> IO [IndicatorSample]
 executeDataLoader configPath = do
   -- Spawn data loader process
-  let cmd = ShellCommand $ "java -jar ../kt-data-loader/build/libs/kt-data-loader.jar --query-config-file \"" ++ configPath ++ "\" --log-level NONE"
+  let cmd = ShellCommand $ "java -jar ../kt-data-loader/build/libs/kt-data-loader.jar --query-config-file \"" ++ configPath ++ "\" --log-level OFF"
   --putStrLn $ show cmd
   proc@(mhIn, mhOut, mhErr, pHandle) <- createProcess $ CreateProcess cmd
     Nothing Nothing Inherit CreatePipe CreatePipe

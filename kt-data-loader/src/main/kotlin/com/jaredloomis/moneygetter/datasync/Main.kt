@@ -36,9 +36,9 @@ class CLIRunner : CliktCommand() {
     .default(3)
   private val plan: Boolean by option(help = "Don't fetch any data - just print out planned queries")
     .flag(default = false)
-  private val logLevel: String by option(help = "NONE - Don't print out logs - just return the result. Logs are saved to a file instead\nERROR - error\nINFO - info\nDEBUG - debug")
+  private val logLevel: String by option(help = "OFF - Don't print out logs; just return the result. Logs are saved to a file instead\nERROR - error\nINFO - info\nDEBUG - debug")
     .default("INFO")
-    .check("must be one of: NONE, DEBUG, INFO, ERROR") { it == "NONE" || it == "DEBUG" || it == "INFO" || it == "ERROR" }
+    .check("must be one of: OFF, DEBUG, INFO, ERROR") { it == "OFF" || it == "DEBUG" || it == "INFO" || it == "ERROR" }
 
   private val mapper by di.instance<ObjectMapper>()
   private val props by di.instance<Properties>()
@@ -46,7 +46,7 @@ class CLIRunner : CliktCommand() {
   private val indicatorCache by di.instance<IndicatorCache>()
 
   private val noLog: Boolean
-    get() = logLevel == "NONE"
+    get() = logLevel == "OFF"
 
   // NOTE: Must be updated every time a new indicator class is added
   private val INDICATOR_MODEL_CLASSES = emptyMap<String, Class<IsIndicatorSample>>()
@@ -219,16 +219,6 @@ class CLIRunner : CliktCommand() {
     val level = Level.toLevel(logLevel.toUpperCase())
     val loggerContext = LoggerFactory.getILoggerFactory() as LoggerContext
     val loggerList = loggerContext.loggerList
-    loggerList.stream().forEach(Consumer<ch.qos.logback.classic.Logger> { tmpLogger: ch.qos.logback.classic.Logger -> tmpLogger.setLevel(level) })
-    /*
-    val logger4j = org.apache.log4j.Logger.getRootLogger()
-    logger4j.level = Level.toLevel(logLevel)
-    if (noLog) {
-      logger4j.level = Level.toLevel(logLevel)
-      // Disable console logging if requested (log to a file in cwd)
-      logger4j.removeAllAppenders()
-      logger4j.addAppender(FileAppender(PatternLayout(), "kt-data-loader.log"))
-    }
-     */
+    loggerList.stream().forEach({ logger -> logger.setLevel(level) })
   }
 }
