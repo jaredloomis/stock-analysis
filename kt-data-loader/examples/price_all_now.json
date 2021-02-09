@@ -1,11 +1,11 @@
 {
   "queries": [
     {
-      "indicator": "price",
+      "indicator": "price-yahoo",
       "arguments": {
         "tickers": ["*"]
       },
-      "schedule": ["1999-03-15", "now"]
+      "schedule": ["now", "now"]
     }
   ]
 }

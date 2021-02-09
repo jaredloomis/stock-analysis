@@ -25,6 +25,7 @@ source-repository head
 
 library
   exposed-modules:
+      AlphaVantageAPI
       Error
       FinnhubAPI
       FinnhubLocal
@@ -47,6 +48,7 @@ library
     , containers
     , either >=5
     , filepath
+    , hashable
     , http-client
     , http-client-tls
     , parallel

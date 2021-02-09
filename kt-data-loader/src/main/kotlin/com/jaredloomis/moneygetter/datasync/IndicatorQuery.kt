@@ -1,13 +1,8 @@
 package com.jaredloomis.moneygetter.datasync
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.databind.ObjectMapper
 import org.kodein.di.instance
-import org.kodein.di.named
-import java.nio.file.Files
-import java.nio.file.Paths
 import java.time.Duration
-
 
 /**
  * An {@code IndicatorQuery} is an indicator ID, along with arguments to pass to the indicator's data source(s).
@@ -36,11 +31,11 @@ data class IndicatorQuery(
     }
   }
 
-  fun getSchedule(): IndicatorSchedule {
+  fun getSchedule(): DataSourceSchedule {
     return if(scheduleRaw != null) {
-      IndicatorSchedule(scheduleRaw.map { IndicatorTime.fromString(it) })
+      DataSourceSchedule(scheduleRaw.map { IndicatorTime.fromString(it) })
     } else {
-      IndicatorSchedule(listOf(IndicatorTime.Now, IndicatorTime.Now))
+      DataSourceSchedule(listOf(IndicatorTime.Now, IndicatorTime.Now))
     }
   }
 

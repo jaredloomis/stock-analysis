@@ -29,6 +29,7 @@ import qualified Data.ByteString.Lazy.Char8 as B (putStrLn)
 
 import qualified FinnhubAPI as FinnhubAPI
 import qualified FinnhubLocal as FinnhubLocal
+import qualified AlphaVantageAPI as AlphaVantageAPI
 import qualified Schedule as Schedule
 import qualified IndicatorConfig as IndicatorConfig
 import Quote (Quote(..))
@@ -66,8 +67,9 @@ execRequest (CLIRequest indicator timestr _ (Just tickers)) | "price" `T.isPrefi
 
   execByIndicatorSubId :: Text -> IO [Either StockError A.Value]
   execByIndicatorSubId dataSourceID
-    | dataSourceID == FinnhubLocal.dataSourceID = finnhubLocalPrice
-    | otherwise                                 = finnhubApiPrice
+    | dataSourceID == FinnhubLocal.dataSourceID    = finnhubLocalPrice
+    | dataSourceID == AlphaVantageAPI.dataSourceID = alphaVantageApiPrice
+    | otherwise                                    = finnhubApiPrice
 
   finnhubLocalPrice :: IO [Either StockError A.Value]
   finnhubLocalPrice = case date of
@@ -81,6 +83,11 @@ execRequest (CLIRequest indicator timestr _ (Just tickers)) | "price" `T.isPrefi
   finnhubApiPrice :: IO [Either StockError A.Value]
   finnhubApiPrice = do
     results <- FinnhubAPI.quoteMany finnhubToken tickers
+    return $ map (bimap StockApiError A.toJSON) results
+
+  alphaVantageApiPrice :: IO [Either StockError A.Value]
+  alphaVantageApiPrice = do
+    results <- AlphaVantageAPI.quoteMany alphaVantageApiKey tickers
     return $ map (bimap StockApiError A.toJSON) results
 
   date :: Maybe UTCTime
@@ -117,6 +124,9 @@ parseTime = formatParseM (utcTimeFormat dayFormat timeFormat) . T.unpack
 --
 -- Config
 --
+
+alphaVantageApiKey :: Text
+alphaVantageApiKey = "OBYY7L1YV9W3F19T"
 
 finnhubToken :: Text
 finnhubToken = "bt8s7o748v6o22d1k1jg" --"bt8plj748v6qh9e49bu0" --"bt0vb8n48v6qbloltab0"

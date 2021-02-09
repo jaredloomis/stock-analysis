@@ -43,9 +43,9 @@ class Functor f => DataLoader f i o a | a f o -> i, a f i -> o where
 data CachingDataLoader = CachingDataLoader
 
 instance DataLoader IO (StrategyM ()) (HM.HashMap DataLoaderQuery [IndicatorSample]) CachingDataLoader where
-  initLoader dataLoader strategy deltaTime timerange = do
+  initLoader dataLoader strategy deltaTime timerange =
     let emptyHm = HM.empty :: HM.HashMap DataLoaderQuery [IndicatorSample]
-    foldStrategyOccasionally deltaTime timerange (InitDataLoader emptyHm) (Right emptyHm) strategy emptyHm $ \stmt _ _ _ acc ->
+    in foldStrategyOccasionally deltaTime timerange (InitDataLoader emptyHm) (Right emptyHm) strategy emptyHm $ \stmt _ _ _ acc ->
       case stmt of
         FetchSample  indicatorID (IndicatorArgs schedule args) _ -> do
           let queryConfig = DataLoaderQueryConfig [DataLoaderQuery indicatorID args schedule]
@@ -57,33 +57,6 @@ instance DataLoader IO (StrategyM ()) (HM.HashMap DataLoaderQuery [IndicatorSamp
           pure $ HM.insert (DataLoaderQuery indicatorID args schedule) samples acc
         _ ->
           pure acc
-    {-
-    let emptyHm = HM.empty :: HM.HashMap DataLoaderQuery [IndicatorSample]
-    time <- IndicatorTime <$> getCurrentTime
-    foldStrategyPointInTime time (InitDataLoader emptyHm) (Right emptyHm) strategy emptyHm $ \stmt _ _ _ acc ->
-      case stmt of
-        FetchSample  indicatorID (IndicatorArgs schedule args) _ -> do
-          let queryConfig = DataLoaderQueryConfig [DataLoaderQuery indicatorID args schedule]
-          samples <- withQueryConfig queryConfig executeDataLoader
-          pure $ HM.insert (DataLoaderQuery indicatorID args schedule) samples acc
-        FetchSamples indicatorID (IndicatorArgs schedule args) _ -> do
-          let queryConfig = DataLoaderQueryConfig [DataLoaderQuery indicatorID args schedule]
-          samples <- withQueryConfig queryConfig executeDataLoader
-          pure $ HM.insert (DataLoaderQuery indicatorID args schedule) samples acc
-        _ ->
-          pure acc-}
-    {-
-    queries <- foldStrategyPointInTime time (InitDataLoader emptyHm) (Right emptyHm) strategy emptyHm $ \stmt _ _ _ acc ->
-      case stmt of
-        FetchSample  indicatorID (IndicatorArgs schedule args) _ -> do
-          pure $ acc : DataLoaderQuery indicatorID args schedule]
-        FetchSamples indicatorID (IndicatorArgs schedule args) _ -> do
-          pure $ acc : DataLoaderQuery indicatorID args schedule]
-        _ ->
-          pure acc
-
-    let f = undefined
-    foldr f HM.empty queries-}
 
   loadSamples _ cachedValues indicatorID iargs@(IndicatorArgs schedule args) = do
     -- Try to fetch sample from cache; if not, execute the data loader
@@ -260,7 +233,7 @@ withSingleQueryConfig indicatorID (IndicatorArgs schedule args) f = do
 executeDataLoader :: FilePath -> IO [IndicatorSample]
 executeDataLoader configPath = do
   -- Spawn data loader process
-  let cmd = ShellCommand $ "java -jar ../kt-data-loader/build/libs/kt-data-loader.jar --query-config-file \"" ++ configPath ++ "\" --no-log"
+  let cmd = ShellCommand $ "java -jar ../kt-data-loader/build/libs/kt-data-loader.jar --query-config-file \"" ++ configPath ++ "\" --log-level NONE"
   --putStrLn $ show cmd
   proc@(mhIn, mhOut, mhErr, pHandle) <- createProcess $ CreateProcess cmd
     Nothing Nothing Inherit CreatePipe CreatePipe

@@ -19,9 +19,6 @@ import IndicatorSample
 momentum :: Text -> Int -> Int -> StrategyM ()
 momentum ticker days weight = associatedMomentum ticker ticker days weight
 
--- Momentum trading
--- > buy(SPY, limit=100)  when price(SPY) > price(SPY, at=now-2days) > price(SPY, at=now-4days)
--- > sell(SPY) when price(SPY) < price(SPY, at=now-2days) < price(SPY, at=now-4days)
 associatedMomentum :: Text -> Text -> Int -> Int -> StrategyM ()
 associatedMomentum watchTicker tradeTicker days weight = do
   pricesByDay <- mapM fetchPriceSampleValue [0..days-1]

@@ -62,7 +62,7 @@ simFinAPI :: Proxy SimFinAPI
 simFinAPI = Proxy
 
 simFinApiId :: Text
-simFinApiId = "finnhub"
+simFinApiId = "simfin_api"
 
 companyStatements :: Text -> Text -> ClientM SimFinStatement
 companyStatements apiKey ticker =

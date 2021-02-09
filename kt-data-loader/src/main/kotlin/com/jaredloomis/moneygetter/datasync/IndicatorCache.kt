@@ -20,7 +20,7 @@ class IndicatorCache {
     val samples = ArrayList<IndicatorSample>(0)
     var retBatch = batch
     for((i, args) in batch.argsList.withIndex()) {
-      val cached = fetchAsList(IndicatorSampleFetch(batch.indicatorID, args))
+      val cached = fetchAsList(IndicatorSampleFetch(batch.dataSource.indicatorID, args))
       if(cached.isNotEmpty()) {
         log.info("Found existing sample in DB for $batch")
         samples.addAll(cached)
@@ -34,8 +34,8 @@ class IndicatorCache {
   fun fetchAsList(fetch: IndicatorSampleFetch, leeway: Duration=Duration.ofHours(2), normalizeToDays: Boolean=true): List<IndicatorSample> {
     val (startTime, endTime) = if(normalizeToDays) {
       Pair(
-        fetch.getTime()?.truncatedTo(ChronoUnit.DAYS).toString(),
-        fetch.getTime()?.truncatedTo(ChronoUnit.DAYS)?.plus(1, ChronoUnit.DAYS).toString()
+        fetch.getTime()?.toInstant()?.truncatedTo(ChronoUnit.DAYS).toString(),
+        fetch.getTime()?.toInstant()?.truncatedTo(ChronoUnit.DAYS)?.plus(1, ChronoUnit.DAYS).toString()
       )
     } else {
       Pair(
@@ -45,11 +45,11 @@ class IndicatorCache {
     }
     val query = db.indicatorSampleQueries.find(
       fetch.indicatorID,
-      fetch.getTickers()[0],
+      fetch.getTickers()!![0],
       startTime,
       endTime
     )
-    log.debug("Querying from DB: $fetch - $query(${fetch.indicatorID}, ${fetch.getTickers()[0]}, $startTime, $endTime)")
+    log.debug("Querying from DB: $fetch - $query(${fetch.indicatorID}, ${fetch.getTickers()!![0]}, $startTime, $endTime)")
     return query.executeAsList()
   }
 }

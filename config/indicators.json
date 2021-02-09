@@ -1,15 +1,19 @@
 {
   "price": {
+    "price-alpha_vantage_api": {
+      "command": "hs-data-sources/.stack-work/install/x86_64-linux-tinfo6/2db2873d4967e16258cf6f3db3df2f229cd2d37ade2547b9e6bdb45d98e93d5c/8.8.3/bin/data-fetcher-hs-exe -i price-alpha_vantage_api $tickers",
+      "schedule": ["now", "now"]
+    },
     "price-finnhub_local": {
       "command": "hs-data-sources/.stack-work/install/x86_64-linux-tinfo6/2db2873d4967e16258cf6f3db3df2f229cd2d37ade2547b9e6bdb45d98e93d5c/8.8.3/bin/data-fetcher-hs-exe -i price-finnhub_local -t $time $tickers",
       "schedule": ["1992-06-15", "2019-12-31"]
     },
     "price-yahoo": {
-      "command": "node js-data-sources/src/index.js fetch-quote $tickers",
+      "command": "node js-data-sources/build/index.js fetch-quote $tickers",
       "schedule": ["now", "now"]
     },
     "price-finnhub_api": {
-      "command": "hs-data-sources/.stack-work/install/x86_64-linux-tinfo6/2db2873d4967e16258cf6f3db3df2f229cd2d37ade2547b9e6bdb45d98e93d5c/8.8.3/bin/data-fetcher-hs-exe -i price $tickers",
+      "command": "hs-data-sources/.stack-work/install/x86_64-linux-tinfo6/2db2873d4967e16258cf6f3db3df2f229cd2d37ade2547b9e6bdb45d98e93d5c/8.8.3/bin/data-fetcher-hs-exe -i price-finnhub_api $tickers",
       "schedule": ["now", "now"]
     }
   },

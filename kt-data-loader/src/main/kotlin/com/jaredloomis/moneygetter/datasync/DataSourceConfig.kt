@@ -6,10 +6,7 @@ import org.kodein.di.instance
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.sql.Time
-import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneId
-import java.time.ZonedDateTime
+import java.time.*
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAccessor
 import java.time.temporal.TemporalQuery
@@ -17,24 +14,23 @@ import kotlin.math.abs
 
 val logger: Logger = LoggerFactory.getLogger("com.jaredloomis.moneygetter.datasync.IndicatorConfig.kt file")
 
-typealias IndicatorGroupSpec = List<IndicatorSpec>
-data class IndicatorSpec(val group: String, val name: String, val command: String, val schedule: IndicatorSchedule) {
+typealias DataSourceGroupSpec = List<DataSourceSpec>
+data class DataSourceSpec(
+  val indicatorID: String,
+  val dataSourceID: String,
+  val commandTemplate: String,
+  val schedule: DataSourceSchedule
+) {
   fun provides(indicatorID: String): Boolean {
-    return group == indicatorID || name.contains(indicatorID)
+    return this.indicatorID == indicatorID || dataSourceID.contains(indicatorID)
   }
 
-  fun getCommandFor(query: IndicatorQuery): String {
-    return query.arguments.entries.fold(command) { acc, arg ->
-      if(arg.key == "tickers") {
-        acc.replace("\$${arg.key}", showTickers(arg.value as List<String>))
-      } else {
-        acc.replace("\$${arg.key}", arg.value.toString())
-      }
-    }
+  override fun toString(): String {
+    return "DataSourceSpec(indicatorID='$indicatorID', dataSourceID='$dataSourceID', commandTemplate='$commandTemplate', schedule=$schedule)"
   }
 }
 
-data class IndicatorSchedule(val raw: List<IndicatorTime>) {
+data class DataSourceSchedule(val raw: List<IndicatorTime>) {
   fun isAvailableAt(time: IndicatorTime): Boolean {
     if(raw.size < 2 || raw.size % 2 != 0) {
       logger.error("In indicator config file, \"schedule\" must be an array of value pairs: start, end, start, end, ...")
@@ -64,8 +60,8 @@ data class IndicatorSchedule(val raw: List<IndicatorTime>) {
     return raw.maxOf { it.toInstant() }
   }
 
-  fun plus(that: IndicatorSchedule): IndicatorSchedule {
-    return IndicatorSchedule(raw.plus(that.raw))
+  fun plus(that: DataSourceSchedule): DataSourceSchedule {
+    return DataSourceSchedule(raw.plus(that.raw))
   }
 
   fun isInstant(): Boolean {
@@ -90,7 +86,7 @@ data class IndicatorSchedule(val raw: List<IndicatorTime>) {
 
   companion object {
     fun isNowish(instant: Instant): Boolean {
-      return abs(Instant.now().toEpochMilli() - instant.toEpochMilli()) < 60 * 1000
+      return abs(Instant.now().toEpochMilli() - instant.toEpochMilli()) < 60 * 60 * 1000
     }
   }
 }
@@ -104,6 +100,14 @@ sealed class IndicatorTime: Comparable<IndicatorTime> {
       is Timestamp -> this.instant
       Now -> Instant.now()
     }
+  }
+
+  fun plus(duration: Duration): IndicatorTime {
+    return Timestamp(toInstant().plus(duration))
+  }
+
+  fun minus(duration: Duration): IndicatorTime {
+    return Timestamp(toInstant().minus(duration))
   }
 
   override operator fun compareTo(other: IndicatorTime): Int {
@@ -145,26 +149,27 @@ sealed class IndicatorTime: Comparable<IndicatorTime> {
   }
 }
 
-class IndicatorConfig(val configString: String) {
+class DataSourceConfig(val configString: String) {
   private val mapper by di.instance<ObjectMapper>()
   private val log = LoggerFactory.getLogger(javaClass)
 
   private var jsonCache: JsonNode? = null
   val json: JsonNode
+
     get() = toJson()
 
-  fun getGroups(): List<IndicatorGroupSpec> {
+  fun getGroups(): List<DataSourceGroupSpec> {
     return json.fields().asSequence().toList()
       .filter { it.value.isObject }
       .map { grp ->
         grp.value.fields().asSequence().toList()
           .filter { it.value.isObject }
           .map { ind ->
-            IndicatorSpec(
+            DataSourceSpec(
               grp.key,
               ind.key,
               ind.value["command"].asText(),
-              IndicatorSchedule(ind.value["schedule"].elements().asSequence()
+              DataSourceSchedule(ind.value["schedule"].elements().asSequence()
                 .map { it.asText() }
                 .map { IndicatorTime.fromString(it) }
                 .toList()
@@ -174,18 +179,36 @@ class IndicatorConfig(val configString: String) {
       }
   }
 
-  fun getFetchCommandTemplate(indicatorID: String): String {
+  fun getFetchCommandTemplate(indicatorID: String, time: IndicatorTime): String? {
     // Select first fetcher for specified indicator in the config file
-    val fetchers = getFetchers(indicatorID)
-    val fetcher = fetchers.next()
-    log.debug("Fetcher for ${indicatorID}:\n${fetcher}")
-    return fetcher["command"].asText()
+    val fetchers = getFetchers(indicatorID, time).toList()
+    return if(fetchers.isNotEmpty()) {
+      val fetcher = fetchers.elementAt(0)
+      log.debug("Fetcher for ${indicatorID}:\n${fetcher}")
+      fetcher["command"].asText()
+    } else {
+      null
+    }
   }
 
-  fun getFetchers(indicatorID: String): Iterator<JsonNode> {
-    return json[indicatorID].elements().asSequence()
+  private fun getFetchers(indicatorID: String, time: IndicatorTime? = null): Sequence<JsonNode> {
+    val fetchers = json[indicatorID].elements().asSequence()
       .filter { it.isObject && it.has("command") }
-      .iterator()
+    return if(time == null) {
+      fetchers
+    } else {
+      fetchers
+        .filter { fetcherIsAvailableAt(it, time) }
+    }
+  }
+
+  private fun fetcherIsAvailableAt(fetcher: JsonNode, time: IndicatorTime): Boolean {
+    val schedule = DataSourceSchedule(
+      fetcher["schedule"].asSequence()
+        .map { IndicatorTime.fromString(it.asText()) }
+        .toList()
+    )
+    return schedule.isAvailableAt(time)
   }
 
   private fun toJson(): JsonNode {

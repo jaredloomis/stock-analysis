@@ -37,6 +37,7 @@ library:
   - containers
   - filepath
   - parallel
+  - hashable
 
 executables:
   data-fetcher-hs-exe:

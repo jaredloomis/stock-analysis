@@ -38,6 +38,7 @@ val di = DI {
         }
       }
       .toList()
+      .shuffled()
   }
 
   bind<List<Stock>>("stocks.all") with singleton {
@@ -54,5 +55,6 @@ val di = DI {
         }
       }
       .toList()
+      .shuffled()
   }
 }
