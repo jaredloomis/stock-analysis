@@ -16,35 +16,15 @@ allTickers = ["FXI", "VGX", "SCHH", "ABBV", "EFA", "CTEC", "V", "MSFT", "F", "TS
 
 main :: IO ()
 main = cachingTest
-  {-}
-  let Just time = parseTime "2009-12-30T05:01:00Z"
-  let durationDays = 120
-  forM_ allTickers $ \tickerA -> forM_ allTickers $ \tickerB -> if tickerA == tickerB then pure () else do
-    tradeLog <- executeStrategyDaily (IndicatorTime time, IndicatorTime $ addUTCTime (fromIntegral $ 60*60*24*durationDays) time) CachingDataLoader (associatedMomentum tickerA tickerB 3 12)
-    putStrLn $ show tickerA ++ " - " ++ show tickerB ++ " ----------------"
-    print tradeLog
-    let summary = summarize tradeLog
-    print summary
-    putStrLn $ "Total profit: $" ++ show (totalValue summary)-}
-
-main2 :: IO ()
-main2 = do
-  let Just time = parseTime "2009-12-30T05:01:00Z"
-  let durationDays = 20
-  tradeLog <- executeStrategyDaily (IndicatorTime time, IndicatorTime $ addUTCTime (fromIntegral $ 60*60*24*durationDays) time) naiveDataLoader (momentum "AAPL" 3 12)
-  print tradeLog
-  let summary = summarize tradeLog
-  putStrLn $ show "AAPL" ++ " ----------------"
-  print summary
-  putStrLn $ "Total profit: $" ++ show (totalValue summary)
 
 cachingTest = do
-  let Just time = parseTime "2009-12-30T05:01:00Z"
-  let durationDays = 30
+  let Just time = parseTime "2010-01-01T00:00:00Z"
+  let durationDays = 10
   let ticker = "AAPL"
-  tradeLog <- executeStrategyDaily (IndicatorTime time, IndicatorTime $ addUTCTime (fromIntegral $ 60*60*24*durationDays) time) CachingDataLoader (momentum ticker 3 1)
+  let strategy = momentum ticker 3 12
+  tradeLog <- executeStrategyDaily (IndicatorTime time, IndicatorTime $ addUTCTime (fromIntegral $ 60*60*24*durationDays) time) NaiveDataLoader (Left strategy) strategy
   putStrLn $ tradeLog `seq` show ticker ++ " ----------------"
   print tradeLog
   let summary = summarize tradeLog
   print summary
-  putStrLn $ "Total profit: $" ++ show (totalValue summary)
+  putStrLn $ "Total value: $" ++ show (totalValue summary)

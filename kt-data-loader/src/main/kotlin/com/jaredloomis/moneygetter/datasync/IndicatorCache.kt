@@ -10,25 +10,14 @@ import java.time.Duration
 import java.time.temporal.ChronoUnit
 
 /**
- * Fetches cached indicators given an IndicatorSampleFetchPlan
+ * Fetches cached indicators given an IndicatorSampleFetch.
  */
 class IndicatorCache {
   private val log: Logger = LoggerFactory.getLogger(javaClass)
   private val db by di.instance<StockDatabase>()
 
-  fun fetchAllIfPossible(batch: IndicatorSampleFetchBatch): Pair<List<IndicatorSample>, IndicatorSampleFetchBatch> {
-    val samples = ArrayList<IndicatorSample>(0)
-    var retBatch = batch
-    for((i, args) in batch.argsList.withIndex()) {
-      val cached = fetchAsList(IndicatorSampleFetch(batch.dataSource.indicatorID, args))
-      if(cached.isNotEmpty()) {
-        log.info("Found existing sample in DB for $batch")
-        samples.addAll(cached)
-        retBatch = retBatch.withoutIndex(i)
-      }
-    }
-
-    return Pair(samples, retBatch)
+  fun fetchIfPossible(fetch: IndicatorSampleFetch): List<IndicatorSample> {
+    return fetchAsList(fetch)
   }
 
   fun fetchAsList(fetch: IndicatorSampleFetch, leeway: Duration=Duration.ofHours(2), normalizeToDays: Boolean=true): List<IndicatorSample> {
@@ -49,7 +38,7 @@ class IndicatorCache {
       startTime,
       endTime
     )
-    log.debug("Querying from DB: $fetch - $query(${fetch.indicatorID}, ${fetch.getTickers()!![0]}, $startTime, $endTime)")
+    log.trace("Querying from DB: $fetch - $query(${fetch.indicatorID}, ${fetch.getTickers()!![0]}, $startTime, $endTime)")
     return query.executeAsList()
   }
 }

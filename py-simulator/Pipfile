@@ -6,6 +6,9 @@ name = "pypi"
 [packages]
 transformers = "*"
 torch = "*"
+matplotlib = "*"
+pyqt5 = "*"
+pandas = "*"
 
 [dev-packages]
 

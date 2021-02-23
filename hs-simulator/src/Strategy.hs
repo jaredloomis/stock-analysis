@@ -24,7 +24,13 @@ data StrategyF next where
   GetTime      ::                                   !(UTCTime -> next)               -> StrategyF next
   deriving (Functor)
 
-data TradeType = Buy | Sell | Put {-# UNPACK #-} !UTCTime | Call {-# UNPACK #-} !UTCTime
+instance Show (StrategyF next) where
+  show (FetchSamples sym args _)   = "FetchSamples(" ++ show sym ++ ", " ++ show args ++ ")"
+  show (FetchSample  sym args _)   = "FetchSample("  ++ show sym ++ ", " ++ show args ++ ")"
+  show (Trade        sym ty qty _) = "Trade(" ++ show sym ++ ", " ++ show ty ++ ", " ++ show qty ++ ")"
+  show (GetTime _)                 = "GetTime"
+
+data TradeType = Buy | Sell | Put !UTCTime | Call !UTCTime
   deriving (Show, Eq)
 
 fetchSamples :: Text -> IndicatorArgs -> StrategyM [IndicatorSample]

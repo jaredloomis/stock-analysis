@@ -13,7 +13,7 @@ data class IndicatorQuery(
   @JsonProperty("schedule")   val scheduleRaw: List<String>? = listOf("now", "now"),
   @JsonProperty("sampleRate") val sampleRate: Long? = 86400000
 ) {
-  private val sp500 by di.instance<List<Stock>>("stocks.sp500")
+  private val watchlist by di.instance<Set<Stock>>("stocks.watchlist")
 
   var tickers: List<String>
     get()     = arguments.getOrDefault("tickers", emptyList<String>()) as List<String>
@@ -22,12 +22,10 @@ data class IndicatorQuery(
   init {
     // Expand '*' to mean 'all stock tickers'
     val all = tickers.any { it == "*" }
-    tickers = if(all) {
-      tickers
+    if(all) {
+      tickers = tickers
         .filter { it == "*" }
         .plus(getStarTickers().map { it.ticker })
-    } else {
-      tickers
     }
   }
 
@@ -62,8 +60,8 @@ data class IndicatorQuery(
     return arguments[s]
   }
 
-  private fun getStarTickers(): List<Stock> {
-    return sp500
+  private fun getStarTickers(): Set<Stock> {
+    return watchlist
   }
 }
 

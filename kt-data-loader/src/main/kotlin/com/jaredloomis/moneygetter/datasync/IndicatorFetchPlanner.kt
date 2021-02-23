@@ -3,7 +3,6 @@ package com.jaredloomis.moneygetter.datasync
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.time.Duration
-import java.time.Instant
 import java.util.stream.Collectors
 import java.util.stream.Stream
 import kotlin.streams.asStream
@@ -24,9 +23,7 @@ data class IndicatorSampleFetch(
   fun getTime(): IndicatorTime? {
     return when(val t = args["time"]) {
       is IndicatorTime -> t
-      //is Instant       -> t
-      //is String        -> Instant.parse(t)
-      null -> null
+      null             -> null
       else             -> {
         logger.error("Time was of type ${t.javaClass}: ${t.toString()}")
         null
@@ -36,17 +33,24 @@ data class IndicatorSampleFetch(
 }
 
 data class IndicatorSampleFetchBatch(
-  val dataSource: DataSourceSpec, val argsList: List<Map<String, Any>>
+  val dataSources: List<DataSourceSpec>, val argsList: List<Map<String, Any>>
 ) {
-  val args = argsList.fold(emptyMap<String, Any>()) { acc, argSet -> acc.plus(argSet) }
-
-  fun getTime(): IndicatorTime? {
-    println(argsList)
-    val timestamp = args.getOrDefault("time", null) as Instant?
-    return timestamp?.let { IndicatorTime.Timestamp(it) }
+  val args = argsList.fold(emptyMap<String, Any>()) { acc, argSet ->
+    // Combine ticker args
+    val accTickers = (acc["tickers"] as List<String>?)
+    val newTickers = argSet["tickers"] as List<String>?
+    val allTickers: List<String> =
+      if(accTickers != null && newTickers != null) {
+        accTickers.plus(newTickers).toSet().toList()
+      } else {
+        accTickers ?: newTickers ?: emptyList()
+      }
+    // For all other args, overwrite
+    acc.plus(argSet)
+       .plus(Pair("tickers", allTickers))
   }
 
-  fun getCommand(): List<String> {
+  fun getCommand(dataSource: DataSourceSpec): List<String> {
     val cmdWithArgs = args.entries.fold(dataSource.commandTemplate) { acc, arg ->
       if(arg.key == "tickers") {
         acc.replace("\$${arg.key}", showTickers(arg.value as List<String>))
@@ -58,23 +62,35 @@ data class IndicatorSampleFetchBatch(
     return cmdWithArgs.split(" ")
   }
 
+  fun <A> tryWithDataSource(f: (DataSourceSpec) -> A): A? {
+    for(dataSource in dataSources) {
+      try {
+        return f(dataSource)
+      } catch(ex: Exception) {
+        logger.debug("tryWithCommand: caught exception; ignoring -- $ex")
+        continue
+      }
+    }
+    return null
+  }
+
   fun withoutIndex(index: Int): IndicatorSampleFetchBatch {
     return if(index < argsList.size) {
-      IndicatorSampleFetchBatch(dataSource, argsList.filterIndexed { i, _ -> i != index })
+      IndicatorSampleFetchBatch(dataSources, argsList.filterIndexed { i, _ -> i != index })
     } else {
       this
     }
   }
 
   override fun toString(): String {
-    return "IndicatorSampleFetchBatch(dataSource=$dataSource, args=$args)"
+    return "IndicatorSampleFetchBatch(dataSources=$dataSources, args=$args)"
   }
 }
 
 data class IndicatorFetchPlanner(val groups: List<DataSourceGroupSpec>) {
   private val logger: Logger = LoggerFactory.getLogger(javaClass)
 
-  fun createFetchPlan(queries: Sequence<IndicatorQuery>, batchSize: Int=Int.MAX_VALUE): Pair<List<IndicatorSampleFetchBatch>, List<IndicatorSampleFetch>> {
+  fun createFetchPlan(queries: Sequence<IndicatorQuery>): Pair<List<IndicatorSampleFetch>, List<IndicatorSampleFetch>> {
     val abortedFetches: MutableList<IndicatorSampleFetch> = ArrayList()
 
     val sampleFetches = queries.asStream()
@@ -120,25 +136,33 @@ data class IndicatorFetchPlanner(val groups: List<DataSourceGroupSpec>) {
       }
       .collect(Collectors.toList())
 
-    // Group together similar samples into batches
-    return Pair(batchFetches(sampleFetches, batchSize), abortedFetches)
+    return Pair(sampleFetches, abortedFetches)
   }
 
-  private fun batchFetches(plan: List<IndicatorSampleFetch>, batchSize: Int): List<IndicatorSampleFetchBatch> {
+  /**
+   * Given a list of samples to fetch, group them into batches.
+   * Two samples belong in the same batch if they have the same data source and the same timestamp.
+   *
+   * Examples of batchable fetches:
+   * - Duplicates
+   * - Requests for the same data source, with the same timestamp, but for differing tickers.
+   */
+  fun batchFetches(plan: List<IndicatorSampleFetch>, batchSize: Int): List<IndicatorSampleFetchBatch> {
     return plan.stream()
-      // Group into batches by data source
-      // XXX should we group by datasource+args?
+      // Group into batches by available data sources and timestamp
       .reduce(
-        emptyMap<DataSourceSpec, List<IndicatorSampleFetch>>(),
+        emptyMap<Pair<List<DataSourceSpec>, IndicatorTime>, List<IndicatorSampleFetch>>(),
         { dataSourceSampleMap, fetch ->
-          val dataSource = assignDataSource(fetch.indicatorID, fetch.getTime()!!)!!
-          if(dataSourceSampleMap.containsKey(dataSource)) {
+          val time = fetch.getTime()!!
+          val dataSources = availableDataSources(fetch.indicatorID, time)
+          val key = Pair(dataSources, time)
+          if(dataSourceSampleMap.containsKey(key)) {
             dataSourceSampleMap.plus(
-              Pair(dataSource, dataSourceSampleMap[dataSource]!!.plus(fetch))
+              Pair(key, dataSourceSampleMap[key]!!.plus(fetch))
             )
           } else {
             dataSourceSampleMap.plus(
-              Pair(dataSource, listOf(fetch))
+              Pair(key, listOf(fetch))
             )
           }
         },
@@ -158,30 +182,20 @@ data class IndicatorFetchPlanner(val groups: List<DataSourceGroupSpec>) {
       // Remove empty batches, if any
       .filter { it.second.isNotEmpty() }
       // For each batch, construct an IndicatorSampleFetchBatch
-      .map { (dataSource, fetches) ->
-        IndicatorSampleFetchBatch(dataSource, fetches.map { it.args })
+      .map { (fetchKey, fetches) ->
+        IndicatorSampleFetchBatch(fetchKey.first, fetches.map { it.args })
       }
   }
 
   private fun assignDataSource(indicatorID: String, time: IndicatorTime): DataSourceSpec? {
-    logger.debug("Data Source Groups: ${groups.toString()}")
-    return flattenList(groups)
-      .filter { it.provides(indicatorID) }
-      .map { logger.debug(it.toString()); it }
-      .filter { it.schedule.isAvailableAt(time) }
-      .getOrNull(0)
+    return availableDataSources(indicatorID, time).getOrNull(0)
   }
 
-  /*
-  private fun assignDataSource(indicatorID: String, timestamp: Instant): DataSourceSpec? {
-    logger.debug("Data Source Groups: ${groups.toString()}")
+  private fun availableDataSources(indicatorID: String, time: IndicatorTime): List<DataSourceSpec> {
     return flattenList(groups)
-      .filter { it.provides(indicatorID) }
-      .map { logger.debug(it.toString()); it }
-      .filter { it.schedule.isAvailableAt(IndicatorTime.Timestamp(timestamp)) }
-      .getOrNull(0)
+      .filter { it.provides(indicatorID) && it.schedule.isAvailableAt(time) }
+      .toList()
   }
-   */
 
   private fun <A> flattenList(xss: List<List<A>>): List<A> {
     val ret = ArrayList<A>()

@@ -1,0 +1,11 @@
+{
+  "queries": [
+    {
+      "indicator": "price-finnhub_local",
+      "arguments": {
+        "tickers": ["*"]
+      },
+      "schedule": ["1992-06-15", "2019-12-31"]
+    }
+  ]
+}

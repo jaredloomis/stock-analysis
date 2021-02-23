@@ -86,7 +86,7 @@ data class DataSourceSchedule(val raw: List<IndicatorTime>) {
 
   companion object {
     fun isNowish(instant: Instant): Boolean {
-      return abs(Instant.now().toEpochMilli() - instant.toEpochMilli()) < 60 * 60 * 1000
+      return abs(Instant.now().toEpochMilli() - instant.toEpochMilli()) < Duration.ofHours(1).toMillis()
     }
   }
 }
@@ -118,11 +118,14 @@ sealed class IndicatorTime: Comparable<IndicatorTime> {
   }
 
   override fun toString(): String {
+    return toInstant().toString()
+    /*
     val timeStr = when(this) {
       Now -> "now"
       is Timestamp -> this.toInstant().toString()
     }
     return "IndicatorTime($timeStr)"
+     */
   }
 
   companion object {

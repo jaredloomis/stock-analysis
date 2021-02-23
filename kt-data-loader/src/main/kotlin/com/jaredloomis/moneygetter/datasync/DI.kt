@@ -23,11 +23,10 @@ val di = DI {
     DateTimeFormatter.ISO_INSTANT
   }
 
-  bind<List<Stock>>("stocks.sp500") with singleton {
+  bind<Set<Stock>>("stocks.sp500") with singleton {
     val jsonText = Files.readString(Paths.get("../data/github.com_datasets/S&P_500_constituents.json"))
     val jsonNode = mapper.readTree(jsonText)
     jsonNode.asIterable()
-      .sortedBy { it["Market Cap"].asDouble(0.0) }
       .mapNotNull {
         try {
           val ticker = it["Symbol"].asText()
@@ -37,11 +36,21 @@ val di = DI {
           null
         }
       }
-      .toList()
       .shuffled()
+      .toSet()
   }
 
-  bind<List<Stock>>("stocks.all") with singleton {
+  bind<Set<Stock>>("stocks.watchlist") with singleton {
+    val jsonText = Files.readString(Paths.get("../data/jaredloomis.com/watchlist.json"))
+    val jsonNode = mapper.readTree(jsonText)
+    jsonNode.asIterable()
+      .map { it.asText() }
+      .map { Stock(it, it, it) }
+      .shuffled()
+      .toSet()
+  }
+
+  bind<Set<Stock>>("stocks.all") with singleton {
     val jsonText = Files.readString(Paths.get("../data/eodhistoricaldata.com/US_LIST_OF_SYMBOLS.json"))
     val jsonNode = mapper.readTree(jsonText)
     jsonNode.asIterable()
@@ -54,7 +63,7 @@ val di = DI {
           null
         }
       }
-      .toList()
       .shuffled()
+      .toSet()
   }
 }

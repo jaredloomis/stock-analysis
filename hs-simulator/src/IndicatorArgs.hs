@@ -4,7 +4,7 @@ import RIO
 
 import Data.Aeson (ToJSON(..), FromJSON(..))
 import Data.Time.Clock (UTCTime)
-import Data.Hashable (Hashable)
+import Data.Hashable (Hashable(..))
 
 import qualified Data.Aeson as A
 import qualified Data.Map as M
@@ -24,6 +24,8 @@ instance ToJSON Any where
 instance FromJSON Any where
   parseJSON json = Any <$> parseJSON json
 instance Ord Any where
+  compare (Any a) (Any b) = compare (hashWithSalt 0 a) (hashWithSalt 0 b)
+  {-
   compare (Any a) (Any b) = compareValues a b
    where
     compareValues (A.Object a) (A.Object b) = compare (HM.map typeOrdinality a) (HM.map typeOrdinality b)
@@ -41,6 +43,8 @@ instance Ord Any where
     typeOrdinality (A.Number _) = 2
     typeOrdinality (A.Bool _)   = 1
     typeOrdinality A.Null       = 0
+  }
+  -}
 
 lookupArg :: IndicatorArgs -> Text -> Maybe Any
 lookupArg (IndicatorArgs _ args) name = name `HM.lookup` args
