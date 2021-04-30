@@ -17,6 +17,7 @@ import kotlin.system.exitProcess
 import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.LoggerContext
 import java.util.concurrent.atomic.AtomicLong
+import java.util.stream.Collectors
 
 fun main(args: Array<String>) {
   CLIRunner().main(args)
@@ -34,11 +35,14 @@ class CLIRunner : CliktCommand() {
   private val concurrentQueries: Int by option(help = "# of data source queries to execute at the same time")
     .int()
     .default(5)
+  private val dataSourceRetries: Int by option(help = "# of retries per data source")
+    .int()
+    .default(3)
   private val plan: Boolean by option(help = "Don't fetch any data - just print out planned queries")
     .flag(default = false)
   private val noCacheCheck: Boolean by option(help = "Don't check the db for samples before fetching")
     .flag(default = false)
-  private val logLevel: String by option(help = "OFF - Don't print out logs; just return the result. Logs are saved to a file instead.\nERROR - error\nINFO - info\nDEBUG - debug\nTRACE - trace")
+  private val logLevel: String by option(help = "Default: INFO\nOFF - Don't print out logs; just return the result. Logs are saved to a file instead.\nERROR - error\nINFO - info\nDEBUG - debug\nTRACE - trace")
     .default("INFO")
     .check("must be one of: OFF, TRACE, DEBUG, INFO, ERROR") { it == "OFF" || it == "ERROR" || it == "INFO" || it == "DEBUG" || it == "TRACE" }
 
@@ -46,6 +50,7 @@ class CLIRunner : CliktCommand() {
   private val props by di.instance<Properties>()
   private val db by di.instance<StockDatabase>()
   private val indicatorCache by di.instance<IndicatorCache>()
+  private val queryManager by di.instance<QueryManager>()
 
   private val insertedSamplesCount: AtomicLong = AtomicLong(0)
 
@@ -60,6 +65,13 @@ class CLIRunner : CliktCommand() {
   private var dataSourceConfigCache: DataSourceConfig? = null
 
   override fun run() {
+    queryManager
+      .withQueryResults("findSamples", listOf("price", "AAPL", "2021", "2022")) {
+        it.next()
+        println(it.fetchSize)
+        println(it.getString(1))
+      }
+
     val executor = createExecutorService()
 
     // Kill child processes if this process is killed (?)
@@ -88,7 +100,7 @@ class CLIRunner : CliktCommand() {
       executor.execute {
         log.info("Fetching batch $fetchBatch")
         // Using a data source... (retries / uses a backup data source if an exception occurs)
-        fetchBatch.tryWithDataSource { dataSource ->
+        fetchBatch.tryWithDataSource(tries = dataSourceRetries + 1) { dataSource ->
           var sampleCount = 0
 
           // Create data source command string
@@ -208,7 +220,9 @@ class CLIRunner : CliktCommand() {
 
   private fun createFetchBatches(queryConfig: IndicatorQueryConfig): List<IndicatorSampleFetchBatch> {
     // Create raw fetch plan
-    val (plannedFetches, abortedFetches) = getFetchPlanner().createFetchPlan(queryConfig.queries.asSequence())
+    val (plannedFetchesStrm, abortedFetches) = getFetchPlanner().createFetchPlan(queryConfig.queries.asSequence())
+    // XXX: Hard limit of 100,000 samples per execution. TODO split large requests into multiple requests
+    val plannedFetches = plannedFetchesStrm.limit(100000).collect(Collectors.toList())
     logger.info("Created raw fetch plan of ${plannedFetches.size} samples")
     logger.debug("First 10 samples: ${plannedFetches.take(10)}")
     // Log aborted fetches
@@ -244,7 +258,8 @@ class CLIRunner : CliktCommand() {
   }
 
   private fun createExecutorService(): ExecutorService {
-    return ThreadPoolExecutor(1, concurrentQueries, 30L, TimeUnit.MINUTES, LinkedBlockingQueue())
+    return Executors.newWorkStealingPool(concurrentQueries)
+    //return ThreadPoolExecutor(1, concurrentQueries, 30L, TimeUnit.MINUTES, LinkedBlockingQueue())
   }
 
   private fun loadQueryConfig(): IndicatorQueryConfig {

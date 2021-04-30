@@ -65,6 +65,7 @@ sqldelight {
   StockDatabase {
     packageName = "com.jaredloomis.moneygetter.datasync"
     dialect = "postgresql"
+    deriveSchemaFromMigrations = true
   }
 }
 compileKotlin {

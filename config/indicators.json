@@ -15,6 +15,10 @@
     "price-finnhub_api": {
       "command": "hs-data-sources/.stack-work/install/x86_64-linux-tinfo6/2db2873d4967e16258cf6f3db3df2f229cd2d37ade2547b9e6bdb45d98e93d5c/8.8.3/bin/data-fetcher-hs-exe -i price-finnhub_api $tickers",
       "schedule": ["now", "now"]
+    },
+    "price-btc_py": {
+      "command": "bash py-btc-data-source/data-source.sh",
+      "schedule": ["now", "now"]
     }
   },
   "sentiment": {

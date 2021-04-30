@@ -2,8 +2,8 @@ import sys
 from xml.etree import ElementTree
 
 
-def parse_xbrl(file_path, form_id="4"):
-  if form_id == "4":
+def parse_xbrl(file_path, filing_type="4"):
+  if filing_type == "4":
     ret = parse_xbrl_form4(file_path)
     if ret is not None:
         return ret

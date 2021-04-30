@@ -24,4 +24,12 @@ WHERE indicator_id = ?
   AND start_time >= ?
   AND end_time < ?;
 
+--nearestMatchingSamples:
+--SELECT * FROM IndicatorSample
+--WHERE indicator_id = ?
+--  AND stock_id = ?
+--  AND TO_TIMESTAMP(start_time, 'YYYY-MM-DDTHH24:MI:SS') > TO_TIMESTAMP(?, 'YYYY-MM-DDTHH24:MI:SS') - make_interval(0, 0, 0, 1, 0, 0, 0.0)
+--  AND TO_TIMESTAMP(start_time, 'YYYY-MM-DDTHH24:MI:SS') < TO_TIMESTAMP(?, 'YYYY-MM-DDTHH24:MI:SS') + make_interval(0, 0, 0, 1, 0, 0, 0.0);
+--ORDER BY abs(date_part('epoch', TO_TIMESTAMP(start_time, 'YYYY-MM-DDTHH24:MI:SS')) - date_part('epoch', TO_TIMESTAMP(?, 'YYYY-MM-DDTHH24:MI:SS')));
+
 -- TODO: stock_id serial REFERENCES Stocks(stock_id),

@@ -12,6 +12,7 @@ val di = DI {
   import(configPropertiesModule)
   import(postgresModule)
   import(indicatorCacheModule)
+  import(queryManagerModule)
 
   val mapper = ObjectMapper()
 

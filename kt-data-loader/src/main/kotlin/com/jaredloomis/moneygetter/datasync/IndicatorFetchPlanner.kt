@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.util.stream.Collectors
 import java.util.stream.Stream
+import kotlin.math.pow
 import kotlin.streams.asStream
 
 data class IndicatorSampleFetch(
@@ -62,16 +63,32 @@ data class IndicatorSampleFetchBatch(
     return cmdWithArgs.split(" ")
   }
 
-  fun <A> tryWithDataSource(f: (DataSourceSpec) -> A): A? {
+  fun <A> tryWithDataSource(tries: Int=3, f: (DataSourceSpec) -> A): A? {
     for(dataSource in dataSources) {
       try {
-        return f(dataSource)
+        return exponentialBackoffRetry(tries, initialDelay = 500) { f(dataSource) }
       } catch(ex: Exception) {
-        logger.debug("tryWithCommand: caught exception; ignoring -- $ex")
+        logger.debug("tryWithCommand: data source failed; ignoring -- $ex")
         continue
       }
     }
     return null
+  }
+
+  @Throws(Exception::class)
+  private fun <A> exponentialBackoffRetry(tries: Int, initialDelay: Int, f: () -> A): A {
+    var ex = Exception()
+    var delay = initialDelay.toDouble()
+    for(i in 1..tries) {
+      try {
+        return f()
+      } catch(exI: Exception) {
+        ex = exI
+        Thread.sleep(delay.toLong())
+        delay *= 2
+      }
+    }
+    throw ex
   }
 
   fun withoutIndex(index: Int): IndicatorSampleFetchBatch {
@@ -90,7 +107,7 @@ data class IndicatorSampleFetchBatch(
 data class IndicatorFetchPlanner(val groups: List<DataSourceGroupSpec>) {
   private val logger: Logger = LoggerFactory.getLogger(javaClass)
 
-  fun createFetchPlan(queries: Sequence<IndicatorQuery>): Pair<List<IndicatorSampleFetch>, List<IndicatorSampleFetch>> {
+  fun createFetchPlan(queries: Sequence<IndicatorQuery>): Pair<Stream<IndicatorSampleFetch>, List<IndicatorSampleFetch>> {
     val abortedFetches: MutableList<IndicatorSampleFetch> = ArrayList()
 
     val sampleFetches = queries.asStream()
@@ -134,7 +151,6 @@ data class IndicatorFetchPlanner(val groups: List<DataSourceGroupSpec>) {
         }
         !isNull
       }
-      .collect(Collectors.toList())
 
     return Pair(sampleFetches, abortedFetches)
   }

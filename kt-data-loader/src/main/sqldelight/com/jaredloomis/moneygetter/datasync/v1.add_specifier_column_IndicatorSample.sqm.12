@@ -1,0 +1,2 @@
+ALTER TABLE IndicatorSample
+ADD COLUMN specifier TEXT;

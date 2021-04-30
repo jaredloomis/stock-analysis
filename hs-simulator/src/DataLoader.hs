@@ -42,9 +42,6 @@ class Functor f => DataLoader f i o a | a f o -> i, a f i -> o where
   loadSamples d o t = (maybeToList <$>) . loadSample d o t
 
 data CachingDataLoader = CachingDataLoader
--- TODO:
--- > data CachingDataLoader = CachingDataLoader (Either (StrategyM ()) (HM.HashMap DataLoaderQuery [IndicatorSample]))
--- And remove i, o type params on DataLoader
 
 instance DataLoader IO (StrategyM ()) (HM.HashMap DataLoaderQuery [IndicatorSample]) CachingDataLoader where
   initLoader dataLoader strategy deltaTime timerange =
@@ -60,13 +57,6 @@ instance DataLoader IO (StrategyM ()) (HM.HashMap DataLoaderQuery [IndicatorSamp
   loadSamples _ cache indicatorID iargs@(IndicatorArgs schedule args) = do
     trace (T.pack $ "== LOAD SAMPLE " ++ show schedule ++ "==\nCache: " ++ show cache ++ "\n") (pure ())
     fst <$> loadSamplesWithCache cache (DataLoaderQuery indicatorID args schedule)
-    {-}
-    trace (T.pack $ "== LOAD SAMPLE " ++ show schedule ++ "==\nCached values: " ++ show cachedValues ++ "\n") (pure ())
-    -- Try to fetch sample from cache; if not, execute the data loader
-    let cachedResult = join . maybeToList . HM.lookup (DataLoaderQuery indicatorID args schedule) $ cachedValues
-    if length cachedResult > 0
-      then pure cachedResult
-      else withSingleQueryConfig indicatorID iargs executeDataLoader-}
 
 loadSamplesWithCache :: HM.HashMap DataLoaderQuery [IndicatorSample] -> DataLoaderQuery -> IO ([IndicatorSample], HM.HashMap DataLoaderQuery [IndicatorSample])
 loadSamplesWithCache cache query =
@@ -145,6 +135,9 @@ executeStrategyDaily :: DataLoader IO (StrategyM ()) o d =>
 executeStrategyDaily timerange dataLoader initVal strategy =
   executeStrategyOccasionally (fromInteger $ 60*60*24) timerange dataLoader initVal strategy
 
+--
+-- Strategy Folds
+--
 
 type StrategyFold m i o d a =
   d ->
@@ -292,7 +285,7 @@ foldProcessOutput ph h initAcc f = work initAcc
       -- Read any outstanding input
       bs <- B.hGetNonBlocking h (64 * 1024)
 
-      -- Continue fold, if input isn't empty
+      -- Update acc, if input isn't empty
       let acc' = if B.length bs == 0
             then acc
             else f acc bs

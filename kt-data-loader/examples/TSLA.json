@@ -1,0 +1,11 @@
+{
+  "queries": [
+    {
+      "indicator": "price-finnhub_local",
+      "arguments": {
+        "tickers": ["TSLA"]
+      },
+      "schedule": ["2011-01-01", "2019-12-31"]
+    }
+  ]
+}
