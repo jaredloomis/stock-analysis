@@ -48,3 +48,9 @@ instance Ord Any where
 
 lookupArg :: IndicatorArgs -> Text -> Maybe Any
 lookupArg (IndicatorArgs _ args) name = name `HM.lookup` args
+
+indicatorArgs :: (IndicatorTime, IndicatorTime) -> [(Text, Any)] -> IndicatorArgs
+indicatorArgs timerange args = IndicatorArgs timerange (HM.fromList args)
+
+arrayArg :: [A.Value] -> Any
+arrayArg = Any . A.Array . V.fromList

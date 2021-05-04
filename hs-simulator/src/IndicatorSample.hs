@@ -3,7 +3,7 @@ module IndicatorSample where
 import RIO
 
 import Data.Aeson (ToJSON(..), FromJSON(..), (.=), (.:))
-import Data.Time.Clock (UTCTime)
+import Data.Time.Clock (UTCTime, NominalDiffTime, diffUTCTime)
 
 import qualified Data.Aeson as A
 
@@ -17,7 +17,7 @@ data IndicatorSample = IndicatorSample {
   sampleFetchTime     :: {-# UNPACK #-} !UTCTime,
   sampleValue         :: {-# UNPACK #-} !Double,
   sampleRaw           :: {-# UNPACK #-} !Text
-} deriving (Show, Eq, Generic)
+} deriving (Show, Generic)
 
 instance ToJSON IndicatorSample where
   toJSON sample = A.object [
@@ -43,5 +43,11 @@ instance FromJSON IndicatorSample where
         <*> o .: "indicator_value"
         <*> o .: "indicator_raw"
 
+instance Eq IndicatorSample where
+  a == b = sampleValue a == sampleValue b
+
 instance Ord IndicatorSample where
   compare a b = compare (sampleValue a) (sampleValue b)
+
+diffSampleStartTime :: IndicatorSample -> IndicatorSample -> NominalDiffTime
+diffSampleStartTime a b = diffUTCTime (sampleStartTime a) (sampleStartTime b)

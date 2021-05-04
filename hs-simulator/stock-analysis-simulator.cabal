@@ -43,9 +43,11 @@ library
     , base >=4.7 && <5
     , bytestring
     , containers
+    , directory
     , dlist
     , free
     , hashable
+    , mtl
     , process
     , rio
     , text
@@ -61,15 +63,17 @@ executable stock-analysis-simulator-exe
   hs-source-dirs:
       app
   default-extensions: GADTs DeriveFunctor OverloadedStrings DeriveGeneric NoImplicitPrelude BangPatterns MultiParamTypeClasses FunctionalDependencies FlexibleInstances FlexibleContexts DeriveAnyClass
-  ghc-options: -O2 -threaded -rtsopts -with-rtsopts=-N -Wall
+  ghc-options: -O2 -threaded -rtsopts -with-rtsopts=-N5 -Wall
   build-depends:
       aeson
     , base >=4.7 && <5
     , bytestring
     , containers
+    , directory
     , dlist
     , free
     , hashable
+    , mtl
     , process
     , rio
     , stock-analysis-simulator
@@ -87,15 +91,17 @@ test-suite stock-analysis-simulator-test
   hs-source-dirs:
       test
   default-extensions: GADTs DeriveFunctor OverloadedStrings DeriveGeneric NoImplicitPrelude BangPatterns MultiParamTypeClasses FunctionalDependencies FlexibleInstances FlexibleContexts DeriveAnyClass
-  ghc-options: -O2 -threaded -rtsopts -with-rtsopts=-N -Wall
+  ghc-options: -O2 -threaded -rtsopts -with-rtsopts=-N5 -Wall
   build-depends:
       aeson
     , base >=4.7 && <5
     , bytestring
     , containers
+    , directory
     , dlist
     , free
     , hashable
+    , mtl
     , process
     , rio
     , stock-analysis-simulator

@@ -29,6 +29,16 @@ class CLIRunner : CliktCommand() {
   private val queryConfigFile: File by option(help = "Path to query config file")
     .file(mustBeReadable = true)
     .required()
+  private val indicatorConfigFile: File by option(help = "Path to global indicator config file")
+    .file(mustBeReadable = true)
+    .default(
+      Paths.get(javaClass.protectionDomain.codeSource.location.toURI())
+           .parent
+           .resolve("..").resolve("..").resolve("..")
+           .resolve("config").resolve("indicators.json")
+           .toFile()
+      )
+    //.default(File("../config/indicators.json"))
   private val batchSize: Int by option(help = "# of tickers per data source query")
     .int()
     .default(20)
@@ -47,10 +57,8 @@ class CLIRunner : CliktCommand() {
     .check("must be one of: OFF, TRACE, DEBUG, INFO, ERROR") { it == "OFF" || it == "ERROR" || it == "INFO" || it == "DEBUG" || it == "TRACE" }
 
   private val mapper by di.instance<ObjectMapper>()
-  private val props by di.instance<Properties>()
   private val db by di.instance<StockDatabase>()
   private val indicatorCache by di.instance<IndicatorCache>()
-  private val queryManager by di.instance<QueryManager>()
 
   private val insertedSamplesCount: AtomicLong = AtomicLong(0)
 
@@ -65,13 +73,6 @@ class CLIRunner : CliktCommand() {
   private var dataSourceConfigCache: DataSourceConfig? = null
 
   override fun run() {
-    queryManager
-      .withQueryResults("findSamples", listOf("price", "AAPL", "2021", "2022")) {
-        it.next()
-        println(it.fetchSize)
-        println(it.getString(1))
-      }
-
     val executor = createExecutorService()
 
     // Kill child processes if this process is killed (?)
@@ -276,7 +277,7 @@ class CLIRunner : CliktCommand() {
     }
 
     // Get command template from config file
-    val indicatorsMap = Paths.get("..").resolve(props["indicators.map.path"] as String)
+    val indicatorsMap = indicatorConfigFile.toPath() //Paths.get("..").resolve(props["indicators.map.path"] as String)
     val indicatorsJson = Files.readString(indicatorsMap)
     // Create command string from template and query
     val conf = DataSourceConfig(indicatorsJson)

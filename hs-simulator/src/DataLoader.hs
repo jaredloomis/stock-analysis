@@ -1,4 +1,3 @@
-{-# LANGUAGE ScopedTypeVariables #-}
 module DataLoader where
 
 import RIO
@@ -11,8 +10,10 @@ import Data.Time.Clock (UTCTime, NominalDiffTime, getCurrentTime)
 import GHC.IO.Handle (mkFileHandle)
 import System.IO (openTempFile, nativeNewline)
 import System.Process
+import System.Directory (removeFile)
 import Data.Aeson (ToJSON(..), FromJSON(..))
 import Data.Hashable (Hashable)
+import Control.Monad.State
 
 import qualified Data.DList as DL
 import qualified Data.ByteString as B
@@ -33,20 +34,35 @@ import Strategy
 -- DataLoader instances
 --
 
-class Functor f => DataLoader f i o a | a f o -> i, a f i -> o where
-  {-# MINIMAL initLoader, (loadSample | loadSamples) #-}
-  initLoader  :: a -> i -> NominalDiffTime -> (IndicatorTime, IndicatorTime) -> f o
-  loadSample  :: a -> o -> Text -> IndicatorArgs -> f (Maybe IndicatorSample)
-  loadSample d o t  = (listToMaybe <$>) . loadSamples d o t
-  loadSamples :: a -> o -> Text -> IndicatorArgs -> f [IndicatorSample]
-  loadSamples d o t = (maybeToList <$>) . loadSample d o t
+class Functor f => DataLoader f a {- | a f o -> i, a f i -> o, a o i -> f -} where
+  {-# MINIMAL (loadSample | loadSamples) #-}
+  loadSample  :: a -> Text -> IndicatorArgs -> f (Maybe IndicatorSample)
+  loadSample d t  = (listToMaybe <$>) . loadSamples d t
+  loadSamples :: a -> Text -> IndicatorArgs -> f [IndicatorSample]
+  loadSamples d t = (maybeToList <$>) . loadSample d t
 
 data CachingDataLoader = CachingDataLoader
 
-instance DataLoader IO (StrategyM ()) (HM.HashMap DataLoaderQuery [IndicatorSample]) CachingDataLoader where
-  initLoader dataLoader strategy deltaTime timerange =
+instance DataLoader (StateT (HM.HashMap DataLoaderQuery [IndicatorSample]) IO) CachingDataLoader where
+  loadSamples _ indicatorID iargs@(IndicatorArgs schedule args) = do
+    let query = DataLoaderQuery indicatorID args schedule
+    cache <- get
+    (samples, cache') <- lift $ loadSamplesWithCache cache query
+    put cache'
+    pure samples
+
+data ScanningDataLoader = ScanningDataLoader
+
+instance DataLoader IO ScanningDataLoader where
+  loadSample _ indicatorID iargs@(IndicatorArgs schedule args) = pure Nothing -- XXX Can be tuned to get more accurate pre-compilation
+
+scanStrategy :: StrategyM ()
+     -> NominalDiffTime
+     -> (IndicatorTime, IndicatorTime)
+     -> IO (HashMap DataLoaderQuery [IndicatorSample])
+scanStrategy strategy deltaTime timerange =
     let emptyHm = HM.empty :: HM.HashMap DataLoaderQuery [IndicatorSample]
-    in trace "====== INIT LOADER ========" $ foldStrategyOccasionally deltaTime timerange (InitDataLoader emptyHm) (Right emptyHm) strategy emptyHm $ \stmt _ _ _ acc ->
+    in trace "====== INIT LOADER ========" $ foldStrategyOccasionally deltaTime timerange ScanningDataLoader strategy emptyHm $ \stmt _ _ acc ->
       let mquery = case stmt of
             FetchSample  indicatorID (IndicatorArgs schedule args) _ -> Just $ DataLoaderQuery indicatorID args schedule
             FetchSamples indicatorID (IndicatorArgs schedule args) _ -> Just $ DataLoaderQuery indicatorID args schedule
@@ -54,155 +70,139 @@ instance DataLoader IO (StrategyM ()) (HM.HashMap DataLoaderQuery [IndicatorSamp
       in trace (T.pack $ "== INIT SAMPLE " ++ show stmt ++ " ==") 12 `seq`
           maybe (pure acc) ((snd <$>) . loadSamplesWithCache acc) mquery
 
-  loadSamples _ cache indicatorID iargs@(IndicatorArgs schedule args) = do
-    trace (T.pack $ "== LOAD SAMPLE " ++ show schedule ++ "==\nCache: " ++ show cache ++ "\n") (pure ())
-    fst <$> loadSamplesWithCache cache (DataLoaderQuery indicatorID args schedule)
-
 loadSamplesWithCache :: HM.HashMap DataLoaderQuery [IndicatorSample] -> DataLoaderQuery -> IO ([IndicatorSample], HM.HashMap DataLoaderQuery [IndicatorSample])
 loadSamplesWithCache cache query =
   let mcachedValue = HM.lookup query cache
       fetchSamples   = do
         samples <- withQueryConfig (DataLoaderQueryConfig [query]) executeDataLoader
         pure (samples, HM.insert query samples cache)
-  in maybe fetchSamples (\cachedValue -> pure (cachedValue, cache)) mcachedValue
+  in maybe fetchSamples (\cachedValue -> trace "FETCHED CACHED VALUE" $ pure (cachedValue, cache)) mcachedValue
 
 data NaiveDataLoader = NaiveDataLoader
 
-instance DataLoader IO (StrategyM ()) () NaiveDataLoader where
-  initLoader _ _ _ _ = pure ()
-  loadSamples _ _ indicatorID args =
+instance DataLoader IO NaiveDataLoader where
+  loadSamples _ indicatorID args =
     withSingleQueryConfig indicatorID args executeDataLoader
 
 data DummyDataLoader = DummyDataLoader
 
-instance DataLoader IO (StrategyM ()) () DummyDataLoader where
-  initLoader _ _ _ _ = pure mempty
-  loadSamples _ _ indicatorID args = pure []
+instance DataLoader IO DummyDataLoader where
+  loadSamples _ indicatorID args = pure []
 
 data InitDataLoader o = InitDataLoader o
 
-instance DataLoader IO (StrategyM ()) o (InitDataLoader o) where
-  initLoader (InitDataLoader o) _ _ _ = pure o
-  loadSamples _ _ indicatorID args = pure []
+instance DataLoader IO (InitDataLoader o) where
+  loadSamples _ indicatorID args = pure []
 
 --
 -- Top-level functions - run a strategy with a data loader
 --
 
-executeStrategyPointInTime :: forall a o d. DataLoader IO (StrategyM ()) o d =>
+executeStrategyPointInTime :: (DataLoader m d, MonadIO m) =>
   IndicatorTime ->
-  d -> Either (StrategyM ()) o -> StrategyM () ->
-  IO [TradeLog]
-executeStrategyPointInTime time dataLoader initVal strategy =
-  DL.toList <$> foldStrategyPointInTime time dataLoader initVal strategy DL.empty executeStrategy'
+  d -> StrategyM () ->
+  m [TradeLog]
+executeStrategyPointInTime time dataLoader strategy =
+  DL.toList <$> foldStrategyPointInTime time dataLoader strategy DL.empty executeStrategy'
  where
-  executeStrategy' (Trade ticker ty count ()) samples utime initOut acc = do
-    price <- maybe (fetchSample initOut utime ticker) (pure . sampleValue)
+  executeStrategy' (Trade ticker ty count ()) samples utime acc = do
+    mprice <- maybe (fetchSampleValue utime ticker) (pure . pure . sampleValue)
       . listToMaybe
       . filter (\sample -> sampleStockID sample == ticker)
       $ samples
-    pure $ DL.snoc acc (TradeLog ty ticker count utime price)
-  executeStrategy' _ _ _ _ _ = pure DL.empty
+    pure $ maybe acc (DL.snoc acc . TradeLog ty ticker count utime) mprice
+  executeStrategy' _ _ _ _ = pure DL.empty
 
-  fetchSample initOut utime ticker =
+  fetchSampleValue utime ticker =
     let sampleArgs = IndicatorArgs (IndicatorTime utime, IndicatorTime utime) $ HM.fromList [("tickers", Any . A.Array . V.fromList $ [A.String ticker])]
-    in maybe 0 sampleValue <$> sampleGetter initOut "price" sampleArgs
+    in fmap sampleValue <$> sampleGetter "price" sampleArgs
 
   sampleGetter  = loadSample dataLoader
 
-executeStrategyOccasionally :: DataLoader IO (StrategyM ()) o d =>
+executeStrategyOccasionally :: (DataLoader m d, MonadIO m) =>
   NominalDiffTime -> (IndicatorTime, IndicatorTime) ->
-  d -> Either (StrategyM ()) o -> StrategyM () ->
-  IO [TradeLog]
-executeStrategyOccasionally deltaTime (startTime, endTime) dataLoader initVal strategy =
-  flip executeStrategy' startTime =<< initializer
+  d -> StrategyM () ->
+  m [TradeLog]
+executeStrategyOccasionally deltaTime (startTime, endTime) dataLoader strategy =
+  executeStrategy' startTime
  where
-  executeStrategy' state time
+  executeStrategy' time
     | time > endTime = pure []
     | otherwise = do
-      samplesThis <- executeStrategyPointInTime time dataLoader (Right state) strategy
-      samplesRest <- executeStrategy' state =<< addTime time deltaTime
+      samplesThis <- executeStrategyPointInTime time dataLoader strategy
+      samplesRest <- executeStrategy' =<< liftIO (addTime time deltaTime)
       pure $ samplesThis ++ samplesRest
 
-  initializer = case initVal of
-                    Left loaderIn   -> initLoader dataLoader loaderIn deltaTime (startTime, endTime)
-                    Right loaderOut -> pure loaderOut
-
-executeStrategyDaily :: DataLoader IO (StrategyM ()) o d =>
+executeStrategyDaily :: (DataLoader m d, MonadIO m) =>
   (IndicatorTime, IndicatorTime) ->
-  d -> Either (StrategyM ()) o -> StrategyM () ->
-  IO [TradeLog]
-executeStrategyDaily timerange dataLoader initVal strategy =
-  executeStrategyOccasionally (fromInteger $ 60*60*24) timerange dataLoader initVal strategy
+  d -> StrategyM () ->
+  m [TradeLog]
+executeStrategyDaily timerange dataLoader strategy =
+  executeStrategyOccasionally (fromInteger $ 60*60*24) timerange dataLoader strategy
 
 --
 -- Strategy Folds
 --
 
-type StrategyFold m i o d a =
+type StrategyFold m d a =
   d ->
   -- ^ The data loader.
-  Either i o ->
-  -- ^ Either the state value (Right o), or an input that can be used to find the initial state.
   StrategyM () ->
   -- ^ The strategy to fold on.
   a ->
   -- ^ The fold accumulator's initial value.
-  (StrategyF () -> [IndicatorSample] -> UTCTime -> o -> a -> m a) ->
+  (StrategyF () -> [IndicatorSample] -> UTCTime -> a -> m a) ->
   -- ^ The fold.
   m a
 
-foldStrategyPointInTime :: (DataLoader m i o d, MonadIO m) => IndicatorTime -> StrategyFold m i o d a
-foldStrategyPointInTime time dataLoader loaderInitVal strategy initAcc f =
-  initializer >>= (\initOut -> foldStrategyPointInTime' initAcc initOut strategy)
+foldStrategyPointInTime :: (DataLoader m d, MonadIO m) => IndicatorTime -> StrategyFold m d a
+foldStrategyPointInTime time dataLoader strategy initAcc f =
+  foldStrategyPointInTime' initAcc strategy
  where
-  foldStrategyPointInTime' acc initOut (Free (FetchSamples indicatorID args next)) = do
+  foldStrategyPointInTime' acc (Free (FetchSamples indicatorID args next)) = do
     let strippedStmt = FetchSamples indicatorID args (const ())
-    samples <- samplesGetter initOut indicatorID args
+    samples <- samplesGetter indicatorID args
     utime   <- utcTime
-    acc'    <- f strippedStmt samples utime initOut acc
-    foldStrategyPointInTime' acc' initOut (next samples)
-  foldStrategyPointInTime' acc initOut (Free (FetchSample indicatorID args next)) = do
+    acc'    <- f strippedStmt samples utime acc
+    foldStrategyPointInTime' acc' (next samples)
+  foldStrategyPointInTime' acc (Free (FetchSample indicatorID args next)) = do
     let strippedStmt = FetchSample indicatorID args (const ())
-    sample <- sampleGetter initOut indicatorID args
+    sample <- sampleGetter indicatorID args
     utime  <- utcTime
-    acc'   <- f strippedStmt (maybeToList sample) utime initOut acc
-    foldStrategyPointInTime' acc' initOut (next sample)
-  foldStrategyPointInTime' acc initOut (Free (Trade ticker ty count next)) = do
+    acc'   <- f strippedStmt (maybeToList sample) utime acc
+    foldStrategyPointInTime' acc' (next sample)
+  foldStrategyPointInTime' acc (Free (Trade ticker ty count next)) = do
     let strippedStmt = Trade ticker ty count ()
     let sampleArgs = IndicatorArgs (time, time) $ HM.fromList [("tickers", Any . A.Array . V.fromList $ [A.String ticker])]
-    price <- maybe 0 sampleValue <$> sampleGetter initOut "price" sampleArgs
+    price <- maybe 0 sampleValue <$> sampleGetter "price" sampleArgs
     utime <- utcTime
-    acc'  <- f strippedStmt [] utime initOut acc
-    foldStrategyPointInTime' acc' initOut next
-  foldStrategyPointInTime' acc initOut (Free (GetTime next)) = do
+    acc'  <- f strippedStmt [] utime acc
+    foldStrategyPointInTime' acc' next
+  foldStrategyPointInTime' acc (Free (GetTime next)) = do
     let strippedStmt = GetTime (const ())
     utime <- utcTime
-    acc'  <- f strippedStmt [] utime initOut acc
-    foldStrategyPointInTime' acc initOut (next utime)
-  foldStrategyPointInTime' acc _ (Pure x) = pure acc
+    acc'  <- f strippedStmt [] utime acc
+    foldStrategyPointInTime' acc (next utime)
+  foldStrategyPointInTime' acc (Pure _) = pure acc
 
   utcTime       = liftIO $ toUTC time
-  initializer   = case loaderInitVal of
-                    Left loaderIn   -> initLoader dataLoader loaderIn (fromIntegral 1) (time, time)
-                    Right loaderOut -> pure loaderOut
   samplesGetter = loadSamples dataLoader
   sampleGetter  = loadSample dataLoader
 
-foldStrategyOccasionally :: (DataLoader m i o d, MonadIO m) =>
-  NominalDiffTime -> (IndicatorTime, IndicatorTime) -> StrategyFold m i o d a
-foldStrategyOccasionally deltaTime (startTime, endTime) dataLoader loaderIn strategy initAcc f = foldStrategyOccasionally' initAcc startTime
+foldStrategyOccasionally :: (DataLoader m d, MonadIO m) =>
+  NominalDiffTime -> (IndicatorTime, IndicatorTime) -> StrategyFold m d a
+foldStrategyOccasionally deltaTime (startTime, endTime) dataLoader strategy initAcc f = foldStrategyOccasionally' initAcc startTime
  where
   foldStrategyOccasionally' acc time
     | time > endTime = pure acc
     | otherwise = do
-      acc'  <- foldStrategyPointInTime time dataLoader loaderIn strategy initAcc f -- TODO: execute initializer, then pass (Right o) to foldStrategyPointInTime
+      acc'  <- foldStrategyPointInTime time dataLoader strategy initAcc f
       foldStrategyOccasionally' acc' =<< liftIO (addTime time deltaTime)
 
-foldStrategyDaily :: (DataLoader m i o d, MonadIO m) =>
-  (IndicatorTime, IndicatorTime) -> StrategyFold m i o d a
-foldStrategyDaily timerange dataLoader loaderIn strategy initAcc f = -- TODO: execute initializer, then pass (Right o) to foldStrategyOccasionally
-  foldStrategyOccasionally (fromInteger $ 60*60*24) timerange dataLoader loaderIn strategy initAcc f
+foldStrategyDaily :: (DataLoader m d, MonadIO m) =>
+  (IndicatorTime, IndicatorTime) -> StrategyFold m d a
+foldStrategyDaily timerange dataLoader strategy initAcc f =
+  foldStrategyOccasionally (fromInteger $ 60*60*24) timerange dataLoader strategy initAcc f
 
 --
 -- Config format
@@ -210,7 +210,7 @@ foldStrategyDaily timerange dataLoader loaderIn strategy initAcc f = -- TODO: ex
 
 data DataLoaderQueryConfig = DataLoaderQueryConfig {
   queries :: [DataLoaderQuery]
-} deriving (Show, Eq, Ord, Generic, Semigroup, Monoid)
+} deriving (Show, Eq, Ord, Generic)
 
 instance ToJSON DataLoaderQueryConfig
 instance FromJSON DataLoaderQueryConfig
@@ -223,6 +223,14 @@ data DataLoaderQuery = DataLoaderQuery {
 
 instance ToJSON DataLoaderQuery
 instance FromJSON DataLoaderQuery
+
+{-
+joinQueryConfigMap :: NominalDiffTime -> HM.HashMap DataLoaderQueryConfig [IndicatorSample] -> HM.HashMap DataLoaderQueryConfig [IndicatorSample]
+joinQueryConfigMap mergeLimit configMap = HM.foldrWithKey loop HM.empty configMap
+ where
+  loop config samples acc =
+-}
+
 
 --
 -- Actually executing the data-loader process
@@ -247,6 +255,7 @@ withSingleQueryConfig indicatorID (IndicatorArgs schedule args) f = do
   hFlush handle
   y <- f path
   hClose handle
+  removeFile path
   -- TODO: Delete tmp file?
   pure y
 
@@ -262,7 +271,7 @@ executeDataLoader configPath = do
   let stdOutHandler = \hOut -> foldProcessOutput pHandle hOut DL.empty $ \acc output ->
         let moutVal = A.decode . BL.fromChunks . return $ output
         in case moutVal of
-          Nothing     -> trace ("Couldn't parse: '" <> T.decodeUtf8 output <> "'") acc
+          Nothing     -> if output /= "" then trace ("Couldn't parse: '" <> T.decodeUtf8 output <> "'") acc else acc
           Just outVal -> trace (T.pack $ "Parsed samples: " ++ show outVal) $ acc <> DL.fromList outVal
   samples <- DL.toList <$> maybe (pure mempty) stdOutHandler mhOut
   -- Wait for process to complete

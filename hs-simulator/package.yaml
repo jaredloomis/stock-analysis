@@ -25,6 +25,8 @@ dependencies:
 - dlist
 - unordered-containers
 - hashable
+- directory
+- mtl
 
 default-extensions:
 - GADTs
@@ -50,7 +52,7 @@ executables:
     - -O2
     - -threaded
     - -rtsopts
-    - -with-rtsopts=-N
+    - -with-rtsopts=-N5
     - -Wall
     dependencies:
     - stock-analysis-simulator
@@ -63,7 +65,7 @@ tests:
     - -O2
     - -threaded
     - -rtsopts
-    - -with-rtsopts=-N
+    - -with-rtsopts=-N5
     - -Wall
     dependencies:
     - stock-analysis-simulator
