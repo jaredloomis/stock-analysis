@@ -2,23 +2,32 @@
   "price": {
     "price-finnhub_local": {
       "command": "hs-data-sources/.stack-work/install/x86_64-linux-tinfo6/2db2873d4967e16258cf6f3db3df2f229cd2d37ade2547b9e6bdb45d98e93d5c/8.8.3/bin/data-fetcher-hs-exe -i price-finnhub_local -t $time $tickers",
-      "schedule": ["1992-06-15", "2019-12-31"]
+      "schedule": ["1992-06-15", "2019-12-31"],
+      "batchSize": 9999999
     },
     "price-yahoo": {
       "command": "node js-data-sources/build/index.js fetch-quote $tickers",
-      "schedule": ["now", "now"]
+      "schedule": ["now", "now"],
+      "batchSize": 128
     },
     "price-alpha_vantage_api": {
       "command": "hs-data-sources/.stack-work/install/x86_64-linux-tinfo6/2db2873d4967e16258cf6f3db3df2f229cd2d37ade2547b9e6bdb45d98e93d5c/8.8.3/bin/data-fetcher-hs-exe -i price-alpha_vantage_api $tickers",
-      "schedule": ["now", "now"]
+      "schedule": ["now", "now"],
+      "batchSize": 64
     },
     "price-finnhub_api": {
       "command": "hs-data-sources/.stack-work/install/x86_64-linux-tinfo6/2db2873d4967e16258cf6f3db3df2f229cd2d37ade2547b9e6bdb45d98e93d5c/8.8.3/bin/data-fetcher-hs-exe -i price-finnhub_api $tickers",
-      "schedule": ["now", "now"]
+      "schedule": ["now", "now"],
+      "batchSize": 64
     },
     "price-btc_py": {
       "command": "bash py-btc-data-source/data-source.sh",
-      "schedule": ["now", "now"]
+      "schedule": ["now", "now"],
+      "batchSize": 1
+    },
+    "price-btc_coincodex_local": {
+      "command": "node js-data-sources/build/index.js query-file-data-source data/coincodex.com/bitcoin_2017-1-1_2021-5-4.quoteformat.json BTC $time $time",
+      "schedule": ["2017-01-01", "2020-12-31"]
     }
   },
   "sentiment": {

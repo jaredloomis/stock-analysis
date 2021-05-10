@@ -19,7 +19,9 @@ data class DataSourceSpec(
   val indicatorID: String,
   val dataSourceID: String,
   val commandTemplate: String,
-  val schedule: DataSourceSchedule
+  val schedule: DataSourceSchedule,
+  val batchSize: Int?,
+  val retries: Int?
 ) {
   fun provides(indicatorID: String): Boolean {
     return this.indicatorID == indicatorID || dataSourceID.contains(indicatorID)
@@ -157,9 +159,13 @@ class DataSourceConfig(val configString: String) {
   private val log = LoggerFactory.getLogger(javaClass)
 
   private var jsonCache: JsonNode? = null
-  val json: JsonNode
+  private val json: JsonNode
 
     get() = toJson()
+
+  fun getConcurrentQueries(): Int? {
+    return json["concurrentQueries"]?.asInt()
+  }
 
   fun getGroups(): List<DataSourceGroupSpec> {
     return json.fields().asSequence().toList()
@@ -176,7 +182,9 @@ class DataSourceConfig(val configString: String) {
                 .map { it.asText() }
                 .map { IndicatorTime.fromString(it) }
                 .toList()
-              )
+              ),
+              ind.value["batchSize"]?.asInt(),
+              ind.value["retries"]?.asInt()
             )
           }
       }
