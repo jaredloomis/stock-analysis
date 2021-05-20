@@ -90,14 +90,6 @@ data class IndicatorSampleFetchBatch(
     throw ex
   }
 
-  fun withoutIndex(index: Int): IndicatorSampleFetchBatch {
-    return if(index < argsList.size) {
-      IndicatorSampleFetchBatch(dataSources, argsList.filterIndexed { i, _ -> i != index })
-    } else {
-      this
-    }
-  }
-
   override fun toString(): String {
     return "IndicatorSampleFetchBatch(dataSources=$dataSources, args=$args)"
   }
@@ -153,54 +145,10 @@ data class IndicatorFetchPlanner(val groups: List<DataSourceGroupSpec>) {
   }
 
   /**
-   * Given a list of samples to fetch, group them into batches.
-   * Two samples belong in the same batch if they have the same data source and the same timestamp.
-   *
-   * Examples of batchable fetches:
-   * - Duplicates
-   * - Requests for the same data source, with the same timestamp, but for differing tickers.
+   * @return a stream of fetch batches, along with a final fetch batch getter. The final fetch batch should be called
+   *         only after the stream has been consumed.
    */
-  fun batchFetches(plan: List<IndicatorSampleFetch>, batchSize: Int): List<IndicatorSampleFetchBatch> {
-    return plan.stream()
-      // Group into batches by available data sources and timestamp
-      .reduce(
-        emptyMap<Pair<List<DataSourceSpec>, IndicatorTime>, List<IndicatorSampleFetch>>(),
-        { dataSourceSampleMap, fetch ->
-          val time = fetch.getTime()!!
-          val dataSources = availableDataSources(fetch.indicatorID, time)
-          val key = Pair(dataSources, time)
-          if(dataSourceSampleMap.containsKey(key)) {
-            dataSourceSampleMap.plus(
-              Pair(key, dataSourceSampleMap[key]!!.plus(fetch))
-            )
-          } else {
-            dataSourceSampleMap.plus(
-              Pair(key, listOf(fetch))
-            )
-          }
-        },
-        { a, b -> a.plus(b) }
-      )
-      // Break up large batches according to batchSize
-      .flatMap { batch ->
-        val dataSourceSpec = batch.key
-        val samples = batch.value
-
-        if(samples.size > batchSize) {
-          samples.chunked(batchSize).map { Pair(dataSourceSpec, it) }
-        } else {
-          listOf(Pair(dataSourceSpec, samples))
-        }
-      }
-      // Remove empty batches, if any
-      .filter { it.second.isNotEmpty() }
-      // For each batch, construct an IndicatorSampleFetchBatch
-      .map { (fetchKey, fetches) ->
-        IndicatorSampleFetchBatch(fetchKey.first, fetches.map { it.args })
-      }
-  }
-
-  fun streamingBatch(plan: Stream<IndicatorSampleFetch>, defaultBatchSize: Int=32): Pair<Stream<IndicatorSampleFetchBatch>, () -> IndicatorSampleFetchBatch> {
+  fun streamingBatch(plan: Stream<IndicatorSampleFetch>, defaultBatchSize: Int=32): Pair<Stream<IndicatorSampleFetchBatch>, () -> List<IndicatorSampleFetchBatch>> {
     var currentKey: Pair<List<DataSourceSpec>, IndicatorTime>? = null
     val currentArgs: MutableList<Map<String, Any>> = ArrayList()
     val batchSize = {
@@ -252,7 +200,11 @@ data class IndicatorFetchPlanner(val groups: List<DataSourceGroupSpec>) {
 
       // Add the last batch
       return Pair(stream, {
-        IndicatorSampleFetchBatch(currentKey!!.first, ArrayList(currentArgs))
+        if(currentKey != null) {
+          listOf(IndicatorSampleFetchBatch(currentKey!!.first, ArrayList(currentArgs)))
+        } else {
+          emptyList()
+        }
       })
   }
 

@@ -20,7 +20,7 @@ class IndicatorCache {
     return fetchAsList(fetch)
   }
 
-  fun fetchAsList(fetch: IndicatorSampleFetch, leeway: Duration=Duration.ofHours(2), normalizeToDays: Boolean=true): List<IndicatorSample> {
+  fun fetchAsList(fetch: IndicatorSampleFetch, leeway: Duration=Duration.ofHours(1), normalizeToDays: Boolean=false): List<IndicatorSample> {
     val (startTime, endTime) = if(normalizeToDays) {
       Pair(
         fetch.getTime()?.toInstant()?.truncatedTo(ChronoUnit.DAYS).toString(),

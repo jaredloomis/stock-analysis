@@ -13,11 +13,11 @@ const args = yargs
   .command('transform <source> <jqExpression>', 'Fetch data from a source, and transform it using jq')
     .string("source")
     .string("jqExpression")
-  .command("query-file-data-source <source> <ticker> <startTime> <endTime>", "Query a data source")
+  .command("query-file-data-source <source> <ticker> <startTime> <fuzzinessMs>", "Query a data source")
     .string("source")
     .string("ticker")
     .string("startTime")
-    .string("endTime")
+    .number("fuzzinessMs")
   .command('join <sourceA> <sourceB> <joinColumn>', 'Fetch two data sources, and merge them on joinColumn')
     .string("sourceA")
     .string("sourceB")
@@ -42,12 +42,14 @@ switch(command) {
       }
       // Load source
       const sourceObject = await loadSource(source);
+      const startTime = new Date(args.startTime).getTime() - args.fuzzinessMs;
+      const endTime = startTime + args.fuzzinessMs*2;
       // Filter out values
-      const filteredObject = sourceObject.filter(obj =>
-        obj.quoteTicker == args.ticker &&
-        new Date(obj.quoteTime).getTime() >= new Date(args.startTime).getTime() &&
-        new Date(obj.quoteTime).getTime() <= new Date(args.endTime).getTime()
-      )
+      const filteredObject = sourceObject.filter(obj => {
+        return  obj.quoteTicker == args.ticker &&
+                new Date(obj.quoteTime).getTime() >= startTime &&
+                new Date(obj.quoteTime).getTime() <= endTime
+      })
 
       console.log(JSON.stringify(filteredObject));
     })();
@@ -62,9 +64,4 @@ switch(command) {
   default:
     console.error(`Unrecognized command: ${command}`);
     break;
-}
-
-function getMonthFromString(mon){
-   const num = new Date(Date.parse(mon +" 1, 2012")).getMonth()+1;
-   return num < 10 ? `0${num}` : num;
 }

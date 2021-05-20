@@ -1,0 +1,10 @@
+{
+  "queries": [
+    {
+      "indicator": "price-btc_py",
+      "arguments": {
+        "tickers": ["BTC"]
+      }
+    }
+  ]
+}

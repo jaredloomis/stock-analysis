@@ -26,7 +26,7 @@
       "batchSize": 1
     },
     "price-btc_coincodex_local": {
-      "command": "node js-data-sources/build/index.js query-file-data-source data/coincodex.com/bitcoin_2017-1-1_2021-5-4.quoteformat.json BTC $time $time",
+      "command": "node js-data-sources/build/index.js query-file-data-source data/coincodex.com/bitcoin_2017-1-1_2021-5-4.quoteformat.json BTC $time 86400000",
       "schedule": ["2017-01-01", "2020-12-31"]
     }
   },

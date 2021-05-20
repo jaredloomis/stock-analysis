@@ -34,7 +34,7 @@ import Strategy
 -- DataLoader instances
 --
 
-class Functor f => DataLoader f a {- | a f o -> i, a f i -> o, a o i -> f -} where
+class Functor f => DataLoader f a where
   {-# MINIMAL (loadSample | loadSamples) #-}
   loadSample  :: a -> Text -> IndicatorArgs -> f (Maybe IndicatorSample)
   loadSample d t  = (listToMaybe <$>) . loadSamples d t

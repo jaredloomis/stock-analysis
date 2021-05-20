@@ -19,7 +19,7 @@ import IndicatorSample
 allTickers = ["FXI", "VGX", "SCHH", "ABBV", "EFA", "CTEC", "V", "MSFT", "F", "TSLA", "AMD", "SPY"]
 
 main :: IO ()
-main = maTest
+main = cachingTest
 
 zigZagTest :: IO ()
 zigZagTest = do
@@ -33,7 +33,7 @@ zigZagTest = do
 
 maTest = do
   let Just time = parseTime "2010-04-01T00:00:00Z"
-  let durationDays = 30
+  let durationDays = 10
   let ticker = "AMD"
   let strategy = tradeMovingAverage ticker 3 7 12
   --queries <- scanStrategy strategy (fromInteger $ 60*60*24) (IndicatorTime time, IndicatorTime $ addUTCTime (fromIntegral $ 60*60*24*durationDays) time)
@@ -46,9 +46,9 @@ maTest = do
   putStrLn $ "Total value: $" ++ show (totalValue summary)
 
 cachingTest = do
-  let Just time = parseTime "2010-04-01T00:00:00Z"
-  let durationDays = 30
-  let ticker = "AMD"
+  let Just time = parseTime "2018-03-01T00:00:00Z"
+  let durationDays = 100
+  let ticker = "BTC"
   let strategy = momentum ticker 3 12
   --queries <- scanStrategy strategy (fromInteger $ 60*60*24) (IndicatorTime time, IndicatorTime $ addUTCTime (fromIntegral $ 60*60*24*durationDays) time)
   --let queries' = joinQueryConfigs queries

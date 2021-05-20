@@ -3,6 +3,7 @@ package com.jaredloomis.moneygetter.datasync
 import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.LoggerContext
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.jaredloomis.moneygetter.datasync.DataSourceExecutorResponse.Companion.default
 import org.kodein.di.instance
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -12,10 +13,11 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
-import java.util.stream.Collectors
 import java.util.stream.Stream
 import kotlin.math.min
-import kotlin.system.exitProcess
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicBoolean
+
 
 data class DataSourceExecutorRequest(
   val dataSourceConfig: DataSourceConfig,
@@ -25,12 +27,22 @@ data class DataSourceExecutorRequest(
 
 data class DataSourceExecutorResponse(
   var error: String?,
-  var insertedSamples: Int
-)
+  var abortedSamples: Long,
+  var processedSamples: Long,
+  var insertedSamples: Long,
+) {
+  companion object {
+    fun default(): DataSourceExecutorResponse {
+      return DataSourceExecutorResponse(null, 0, 0, 0)
+    }
+  }
+}
 
 class DataSourceExecutor(
   logLevel: String
 ) {
+  var runInProgress = AtomicBoolean(false)
+
   private val log = createLogger(logLevel)
   private val mapper by di.instance<ObjectMapper>()
   private val db by di.instance<StockDatabase>()
@@ -40,52 +52,52 @@ class DataSourceExecutor(
     .plus(Pair(PriceSample.INDICATOR_ID, PriceSample::class.java))
     .plus(Pair(SentimentSample.INDICATOR_ID, SentimentSample::class.java))
 
-  private var executor: ExecutorService? = null
-  private var concurrentQueries: Int? = null
+  private var executorService: ExecutorService? = null
   private var fetchPlanner: IndicatorFetchPlanner? = null
+  private val cachedSamples: MutableList<IndicatorSample> = ArrayList()
   private val response: AtomicReference<DataSourceExecutorResponse> = AtomicReference(
-    DataSourceExecutorResponse(null, 0)
+    default()
   )
   private var request: DataSourceExecutorRequest? = null
 
   fun run(req: DataSourceExecutorRequest, sampleHandler: (List<IndicatorSample>) -> Unit): DataSourceExecutorResponse {
     // Initialize state
+    runInProgress.set(true)
     request = req
-    response.set(
-      DataSourceExecutorResponse(null, 0)
-    )
+    response.set(default())
     fetchPlanner = IndicatorFetchPlanner(req.dataSourceConfig.getGroups())
-    if(executor == null || req.dataSourceConfig.getConcurrentQueries() != concurrentQueries) {
-      executor = createExecutorService(req.dataSourceConfig)
-    }
+    executorService = getExecutorService(req.dataSourceConfig)
+    cachedSamples.clear()
 
     log.debug("Executing Query")
     log.debug("Query Config: ${req.queryConfig}")
     log.debug("Data Source Config: ${req.dataSourceConfig}")
 
     // Create fetch batches
-    val (fetchBatches, finalBatch) = createFetchBatches()
+    val (fetchBatches, finalBatches) = createFetchBatches()
 
     // Execute queries
-    fetchBatches.forEach { executeFetchBatch(it, sampleHandler) }
-    executeFetchBatch(finalBatch(), sampleHandler)
+    fetchBatches.forEach   { executeFetchBatch(it, sampleHandler) }
+    finalBatches().forEach { executeFetchBatch(it, sampleHandler) }
 
-    executor!!.shutdown()
-    executor!!.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS)
+    // Process cached samples
+    processSamples(cachedSamples, insertInDB = false)
+    sampleHandler(cachedSamples)
 
-    log.info("SUMMARY: Successfully inserted ${response.get().insertedSamples} samples")
+    val res = response.get()
+    log.info("SUMMARY: Successfully inserted ${res.insertedSamples} samples out of ${res.processedSamples} processed (${res.abortedSamples} aborted)")
 
-    if(executor!!.isShutdown) {
-      log.info("Successfully completed")
-    } else {
-      log.error("Executor didn't shutdown")
+    if(!executorService!!.isShutdown) {
+      executorService!!.shutdown()
+      executorService!!.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS)
     }
 
+    runInProgress.set(false)
     return response.get()
   }
 
   private fun executeFetchBatch(fetchBatch: IndicatorSampleFetchBatch, sampleHandler: (List<IndicatorSample>) -> Unit) {
-    executor!!.execute {
+    executorService!!.execute {
       log.info("Fetching batch $fetchBatch")
       // Using a data source... (retries / uses a backup data source if an exception occurs)
       fetchBatch.tryWithDataSource { dataSource ->
@@ -160,6 +172,8 @@ class DataSourceExecutor(
       return
     }
 
+    response.updateAndGet { it.processedSamples + samples.size; it }
+
     log.info("Processing ${samples.size} samples")
     log.debug("$samples")
 
@@ -186,27 +200,42 @@ class DataSourceExecutor(
     }
   }
 
-  private fun createFetchBatches(): Pair<Stream<IndicatorSampleFetchBatch>, () -> IndicatorSampleFetchBatch> {
+  private fun createFetchBatches(): Pair<Stream<IndicatorSampleFetchBatch>, () -> List<IndicatorSampleFetchBatch>> {
     // Create raw fetch plan
     val (plannedFetches, abortedFetches) = fetchPlanner!!.createFetchPlan(request!!.queryConfig.queries.asSequence())
 
     // Log aborted fetches
     if(abortedFetches.isNotEmpty()) {
+      response.updateAndGet { it.abortedSamples = abortedFetches.size.toLong(); it }
       log.error("${abortedFetches.size} fetches aborted.")
       log.trace("Aborted fetches: $abortedFetches")
     }
 
     val uncachedFetches = if(!request!!.noCacheCheck) {
       plannedFetches.filter { fetch ->
-        val cachedSamples = indicatorCache.fetchIfPossible(fetch)
-        processSamples(cachedSamples, insertInDB = false)
-        cachedSamples.isEmpty()
+        val cached = indicatorCache.fetchIfPossible(fetch)
+        cachedSamples.addAll(cached)
+        cached.isEmpty()
       }
     } else {
       plannedFetches
     }
 
     return fetchPlanner!!.streamingBatch(uncachedFetches)
+  }
+
+  var lastDataSourceConfig: DataSourceConfig? = null
+
+  private fun getExecutorService(dataSourceConfig: DataSourceConfig): ExecutorService {
+    if(executorService == null || executorService!!.isShutdown) {
+      executorService = createExecutorService(dataSourceConfig)
+    } else if(lastDataSourceConfig?.getConcurrentQueries() == dataSourceConfig.getConcurrentQueries()) {
+      executorService!!.shutdown()
+      executorService!!.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS)
+      executorService = createExecutorService(dataSourceConfig)
+    }
+    lastDataSourceConfig = dataSourceConfig
+    return executorService!!
   }
 
   private fun createExecutorService(dataSourceConfig: DataSourceConfig): ExecutorService {

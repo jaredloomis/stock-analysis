@@ -42,6 +42,8 @@ class CLIRunner : CliktCommand() {
            .toFile()
        */
       )
+  private val serverMode: Boolean by option(help = "Enable HTTP server mode")
+    .flag(default = false)
   private val plan: Boolean by option(help = "Don't fetch any data - just print out planned queries")
     .flag(default = false)
   private val noCacheCheck: Boolean by option(help = "Don't check the db for samples before fetching")
@@ -55,11 +57,17 @@ class CLIRunner : CliktCommand() {
   private var dataSourceConfigCache: DataSourceConfig? = null
 
   override fun run() {
-    val queryConfig = loadQueryConfig()
-    DataSourceExecutor(logLevel).run(
-      DataSourceExecutorRequest(getIndicatorConfig(), queryConfig, noCacheCheck)
-    ) { samples ->
-      samples.forEach { log.debug(it.toString()) }
+    when {
+      serverMode -> Server(3002, getIndicatorConfig()).start()
+      plan -> {}// TODO log.info(DataSourceExecutor(logLevel).)
+      else -> {
+        val queryConfig = loadQueryConfig()
+        DataSourceExecutor(logLevel).run(
+          DataSourceExecutorRequest(getIndicatorConfig(), queryConfig, noCacheCheck)
+        ) { samples ->
+          samples.forEach { log.debug(it.toString()) }
+        }
+      }
     }
   }
 

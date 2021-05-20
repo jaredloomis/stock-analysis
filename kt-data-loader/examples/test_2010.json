@@ -1,0 +1,1 @@
+{"queries":[{"schedule":["2015-03-10T00:00:00Z","2015-03-20T00:00:00Z"],"arguments":{"tickers":["F", "PYPL"]},"indicator":"price"}]}
